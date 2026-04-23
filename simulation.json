@@ -1,0 +1,24 @@
+{
+  "name": "My Robot",
+  "objPath": "./robot.obj",
+  "mtlPath": "./robot.mtl",
+  "drivetrain": {
+    "type": "tank",
+    "wheelDiameter": 3.25,
+    "maxRPM": 450,
+    "trackWidth": 12,
+    "robotWidth": 15
+  },
+  "motors": [
+    { "id": "intake",    "meshName": "intake_roller", "rpm": 600, "axis": "x" },
+    { "id": "arm",       "meshName": "arm_pivot",     "rpm": 100, "axis": "z" }
+  ],
+  "pistons": [
+    { "id": "clamp",     "meshName": "clamp_arm",     "axis": "z", "stroke": 2.5 }
+  ],
+  "sensors": [
+    { "id": "imu",       "type": "IMU",      "source": "heading" },
+    { "id": "odom_fwd",  "type": "rotation", "source": "encFwd"  },
+    { "id": "gps",       "type": "GPS",      "source": "position"}
+  ]
+}

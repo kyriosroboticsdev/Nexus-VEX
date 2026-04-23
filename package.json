@@ -1,0 +1,110 @@
+{
+  "name": "nexus",
+  "version": "1.0.0",
+  "description": "Nexus — Vex Robotics Tool for All",
+  "author": "Kyrio",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "publish": "electron-builder --publish always",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "build": {
+    "appId": "com.kyrio.nexus",
+    "productName": "Nexus",
+    "copyright": "Copyright © 2025 Kyrio",
+    "files": [
+      "app.js",
+      "main.js",
+      "preload.js",
+      "simulator.js",
+      "index.html",
+      "notebook.html",
+      "config.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "nexus_cv.py",
+        "to": "nexus_cv.py"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nexus"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.sports"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Sports"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "kyrio",
+      "repo": "nexus"
+    }
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron/fuses": "^1.8.0",
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.3.0",
+    "git": "^0.1.5"
+  }
+}

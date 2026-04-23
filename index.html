@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexus — Vex Robotics Tool for All</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="config.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --red:#e8302a;--red-d:rgba(232,48,42,0.15);
+  --blue:#1a7ddf;--blue-d:rgba(26,125,223,0.15);
+  --gold:#a855f7;--gold-d:rgba(168,85,247,0.12);
+  --green:#22c55e;--green-d:rgba(34,197,94,0.12);
+  --s0:#08080b;--s1:#0e0e13;--s2:#151519;--s3:#1c1c22;--s4:#24242c;--s5:#2e2e3a;
+  --b1:rgba(255,255,255,0.055);--b2:rgba(255,255,255,0.1);--b3:rgba(255,255,255,0.17);
+  --t1:#eeeef4;--t2:#8888a0;--t3:#48485a;
+  --fd:'Barlow Condensed',sans-serif;--fb:'Barlow',sans-serif;--fm:'JetBrains Mono',monospace;
+  --r:6px;--rl:12px;
+}
+body{background:var(--s0);color:var(--t1);font-family:var(--fb);font-size:14px;line-height:1.5;min-height:100vh;overflow:hidden;}
+
+/* ─── TOPBAR ─── */
+.topbar{background:var(--s2);border-bottom:1px solid var(--b1);height:50px;display:flex;align-items:center;padding:0 14px;gap:9px;flex-shrink:0;}
+.logo{font-family:var(--fd);font-weight:900;font-size:21px;letter-spacing:0.05em;white-space:nowrap;display:flex;align-items:center;gap:5px;}
+.logo em{color:var(--gold);font-style:normal;}
+.logo sub{font-size:9px;font-weight:600;background:var(--gold-d);color:var(--gold);padding:1px 5px;border-radius:3px;font-family:var(--fb);letter-spacing:0.08em;vertical-align:middle;margin-left:1px;}
+.sep{width:1px;height:22px;background:var(--b2);flex-shrink:0;}
+.ev-input{flex:1;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fb);font-size:13px;padding:6px 10px;border-radius:var(--r);outline:none;transition:border-color 0.15s;min-width:0;}
+.ev-input:focus{border-color:var(--gold);}
+.ev-input::placeholder{color:var(--t3);}
+.btn-g{background:var(--gold);color:#ffffff;font-family:var(--fd);font-size:14px;font-weight:700;letter-spacing:0.06em;padding:6px 14px;border:none;border-radius:var(--r);cursor:pointer;transition:opacity 0.15s;white-space:nowrap;flex-shrink:0;}
+.btn-g:hover{opacity:0.87;}
+.btn-g:disabled{opacity:0.35;cursor:default;}
+.btn-o{background:transparent;border:1px solid var(--b2);color:var(--t2);font-family:var(--fb);font-size:12px;padding:5px 10px;border-radius:var(--r);cursor:pointer;transition:all 0.12s;white-space:nowrap;flex-shrink:0;}
+.btn-o:hover{border-color:var(--b3);color:var(--t1);}
+.status-row{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--t3);white-space:nowrap;margin-left:auto;}
+.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--t3);}
+.sdot-live{background:var(--green);animation:blink 1.4s ease-in-out infinite;}
+.sdot-load{background:var(--gold);animation:blink 0.7s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.2;}}
+
+/* ─── LAYOUT ─── */
+.layout{display:grid;grid-template-columns:252px 1fr 280px;height:calc(100vh - 50px);}
+.pl{background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;overflow:hidden;}
+.pr{background:var(--s1);border-left:1px solid var(--b1);display:flex;flex-direction:column;overflow:hidden;}
+.ph{padding:10px 12px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.ph-t{font-family:var(--fd);font-weight:700;font-size:11px;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;}
+.scr{overflow-y:auto;flex:1;}
+.scr::-webkit-scrollbar{width:3px;}
+.scr::-webkit-scrollbar-thumb{background:var(--s5);border-radius:3px;}
+
+/* ─── MATCH LIST ─── */
+.mi{padding:9px 10px;margin:3px 5px;border-radius:var(--r);cursor:pointer;border:1px solid transparent;transition:all 0.1s;}
+.mi:hover{background:var(--s3);}
+.mi.active{background:var(--s3);border-color:var(--gold);}
+.mi.scouted{border-left:3px solid var(--green);padding-left:8px;}
+.mi-top{display:flex;align-items:center;gap:4px;margin-bottom:5px;}
+.mi-num{font-family:var(--fd);font-weight:700;font-size:14px;flex:1;}
+.bx{font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;letter-spacing:0.06em;}
+.b-sc{background:rgba(34,197,94,0.13);color:#22c55e;}
+.b-up{background:var(--s4);color:var(--t3);}
+.b-sk{background:var(--gold-d);color:var(--gold);}
+.mi-teams{display:flex;align-items:center;gap:3px;flex-wrap:wrap;}
+.tt{font-family:var(--fm);font-size:10px;font-weight:600;padding:2px 5px;border-radius:3px;}
+.tt-r{background:var(--red-d);color:#ff7b77;}
+.tt-b{background:var(--blue-d);color:#6ab3ff;}
+.vs{color:var(--t3);font-size:10px;}
+.mi-sc{font-family:var(--fd);font-weight:700;font-size:12px;color:var(--t2);margin-top:3px;}
+
+/* ─── CENTER ─── */
+.pc{display:flex;flex-direction:column;overflow:hidden;background:var(--s0);}
+
+/* ─── SCOUT AREA ─── */
+.sa{flex:1;overflow-y:auto;padding:12px;}
+.sa::-webkit-scrollbar{width:3px;}
+.sa::-webkit-scrollbar-thumb{background:var(--s5);border-radius:3px;}
+.mb{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:12px 14px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;}
+.mb-s{display:flex;flex-direction:column;gap:2px;}
+.mb-s.rt{align-items:flex-end;}
+.mb-tn{font-family:var(--fd);font-weight:900;font-size:19px;line-height:1;}
+.mb-tn.r{color:#ff6b65;}.mb-tn.b{color:#6ab3ff;}
+.mb-org{font-size:11px;color:var(--t2);}
+.mb-mid{text-align:center;}
+.mb-lbl{font-family:var(--fd);font-size:11px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;}
+.mb-sc{font-family:var(--fd);font-weight:900;font-size:28px;line-height:1.1;}
+.pw{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:11px 13px;margin-bottom:10px;}
+.ph2{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
+.pl2{font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.11em;color:var(--t3);text-transform:uppercase;}
+.pn{display:flex;justify-content:space-between;margin-bottom:4px;}
+.pr2{font-family:var(--fd);font-size:17px;font-weight:900;color:#ff6b65;}
+.pb2{font-family:var(--fd);font-size:17px;font-weight:900;color:#6ab3ff;}
+.pt{height:6px;background:var(--s4);border-radius:3px;overflow:hidden;}
+.pf{height:100%;border-radius:3px;transition:width 0.5s ease;}
+.tr{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:8px;margin-bottom:10px;}
+.tc{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:10px 12px;border-top:3px solid transparent;}
+.tc.red{border-top-color:var(--red);}.tc.blue{border-top-color:var(--blue);}
+.tc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+.tc-n{font-family:var(--fd);font-weight:900;font-size:18px;line-height:1;}
+.tc-n.red{color:#ff6b65;}.tc-n.blue{color:#6ab3ff;}
+.tc-o{font-size:11px;color:var(--t2);margin-top:1px;}
+.rkb{background:var(--gold-d);color:var(--gold);font-family:var(--fm);font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;}
+.tc-st{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.st{background:var(--s3);border-radius:var(--r);padding:4px 7px;}
+.stl{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:1px;}
+.stv{font-family:var(--fm);font-size:12px;font-weight:600;}
+.sf{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:12px 14px;margin-bottom:10px;}
+.sf-t{font-family:var(--fd);font-weight:700;font-size:12px;letter-spacing:0.08em;color:var(--t2);text-transform:uppercase;margin-bottom:10px;}
+.sr{display:grid;grid-template-columns:165px 1fr;align-items:center;gap:8px;margin-bottom:8px;}
+.sl{font-size:13px;color:var(--t1);}
+.ss{font-size:11px;color:var(--t3);}
+.stars{display:flex;gap:3px;}
+.star{font-size:18px;cursor:pointer;color:var(--s5);transition:color 0.08s;user-select:none;line-height:1;}
+.star.on{color:var(--gold);}
+.sels{background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fb);font-size:13px;padding:5px 8px;border-radius:var(--r);outline:none;width:100%;}
+.txta{width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fb);font-size:13px;padding:7px 9px;border-radius:var(--r);outline:none;resize:vertical;min-height:56px;transition:border-color 0.15s;}
+.txta:focus{border-color:var(--gold);}
+.txta::placeholder{color:var(--t3);}
+.cb{width:15px;height:15px;accent-color:var(--gold);cursor:pointer;}
+.mr{display:flex;align-items:center;gap:8px;}
+.mrn{font-family:var(--fd);font-size:24px;font-weight:900;color:var(--gold);min-width:30px;}
+input[type=range]{width:100%;accent-color:var(--gold);}
+.fa{display:flex;gap:7px;margin-top:11px;padding-top:10px;border-top:1px solid var(--b1);}
+
+/* ─── RIGHT PANEL ─── */
+.ev-hd{padding:11px 12px;border-bottom:1px solid var(--b1);flex-shrink:0;}
+.ev-nm{font-family:var(--fd);font-weight:700;font-size:15px;line-height:1.2;margin-bottom:2px;}
+.ev-mt{font-size:11px;color:var(--t3);}
+.rr{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:6px;padding:5px 9px;border-radius:var(--r);transition:background 0.08s;}
+.rr:hover{background:var(--s3);}
+.rr.hl{background:rgba(168,85,247,0.05);border-left:2px solid var(--gold);padding-left:7px;}
+.rn{font-family:var(--fm);font-size:11px;color:var(--t3);text-align:right;}
+.rt2{font-family:var(--fm);font-size:12px;font-weight:600;}
+.rw{font-size:11px;color:var(--t2);}
+.ex{padding:9px 11px;border-top:1px solid var(--b1);flex-shrink:0;}
+.ex h4{font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;}
+.xb{display:flex;align-items:center;gap:7px;width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fb);font-size:12px;padding:7px 10px;border-radius:var(--r);cursor:pointer;transition:all 0.12s;margin-bottom:5px;text-align:left;}
+.xb:hover{background:var(--s4);border-color:var(--b3);}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:34px 14px;color:var(--t3);font-size:13px;text-align:center;}
+.nt{background:var(--gold-d);border:1px solid rgba(168,85,247,0.18);border-radius:var(--rl);padding:9px 12px;font-size:12px;color:var(--gold);line-height:1.6;margin-bottom:10px;}
+
+
+/* ─── TEAM ANALYSIS PAGE ─── */
+#teamPage{position:fixed;inset:0;background:var(--s0);z-index:150;display:none;flex-direction:column;overflow:hidden;}
+#teamPage.open{display:flex;}
+.tp-topbar{background:var(--s2);border-bottom:1px solid var(--b1);height:50px;display:flex;align-items:center;padding:0 20px;gap:14px;flex-shrink:0;}
+.tp-back{display:flex;align-items:center;gap:7px;background:transparent;border:1px solid var(--b2);color:var(--t2);font-family:var(--fb);font-size:13px;padding:5px 12px;border-radius:var(--r);cursor:pointer;transition:all 0.12s;}
+.tp-back:hover{border-color:var(--b3);color:var(--t1);}
+.tp-team-num{font-family:var(--fd);font-weight:900;font-size:24px;letter-spacing:0.04em;}
+.tp-team-org{font-size:13px;color:var(--t2);}
+.tp-body{display:grid;grid-template-columns:1fr 340px;flex:1;overflow:hidden;}
+.tp-main{overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;}
+.tp-main::-webkit-scrollbar{width:3px;}
+.tp-main::-webkit-scrollbar-thumb{background:var(--s5);border-radius:3px;}
+.tp-side{background:var(--s1);border-left:1px solid var(--b1);overflow-y:auto;padding:16px;}
+.tp-side::-webkit-scrollbar{width:3px;}
+.tp-side::-webkit-scrollbar-thumb{background:var(--s5);border-radius:3px;}
+.tp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.tp-stat{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:13px 14px;}
+.tp-stat-lbl{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;}
+.tp-stat-val{font-family:var(--fd);font-weight:900;font-size:26px;line-height:1;}
+.tp-stat-sub{font-size:11px;color:var(--t2);margin-top:3px;}
+.tp-card{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:14px 16px;}
+.tp-card-title{font-family:var(--fd);font-weight:700;font-size:12px;letter-spacing:0.1em;color:var(--t2);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
+.tp-chart-wrap{position:relative;height:180px;}
+.momentum-row{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;}
+.mom-block{width:22px;height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:var(--fd);}
+.mom-w{background:rgba(34,197,94,0.2);color:#22c55e;}
+.mom-l{background:rgba(232,48,42,0.2);color:#ff7b77;}
+.mom-t{background:var(--s4);color:var(--t3);}
+.tp-match-row{display:grid;grid-template-columns:50px 1fr 80px 80px;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r);border:1px solid transparent;transition:all 0.1s;margin-bottom:3px;}
+.tp-match-row:hover{background:var(--s3);border-color:var(--b1);}
+.tp-match-lbl{font-family:var(--fd);font-weight:700;font-size:13px;}
+.tp-match-teams{font-size:12px;color:var(--t2);}
+.tp-match-score{font-family:var(--fd);font-weight:700;font-size:14px;text-align:right;}
+.tp-match-result{font-size:11px;font-weight:600;padding:2px 7px;border-radius:3px;text-align:center;}
+.res-w{background:rgba(34,197,94,0.13);color:#22c55e;}
+.res-l{background:rgba(232,48,42,0.13);color:#ff7b77;}
+.res-t{background:var(--s4);color:var(--t3);}
+.tp-tabs{display:flex;gap:0;border-bottom:1px solid var(--b1);background:var(--s2);flex-shrink:0;padding:0 20px;}
+.tp-tab{font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;padding:12px 18px;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;transition:all 0.15s;background:none;border-top:none;border-left:none;border-right:none;}
+.tp-tab:hover{color:var(--t2);}
+.tp-tab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.tp-tab-badge{background:var(--s4);color:var(--t3);font-size:10px;font-family:var(--fb);font-weight:600;padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle;}
+.tp-tab.active .tp-tab-badge{background:var(--gold-d);color:var(--gold);}
+@keyframes skelPulse{0%,100%{opacity:0.5;}50%{opacity:1;}}
+.season-event-row{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:11px 14px;margin-bottom:8px;}
+.season-event-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.season-event-name{font-size:13px;font-weight:500;color:var(--t1);}
+.season-event-place{font-family:var(--fd);font-weight:900;font-size:18px;}
+.season-event-place.gold{color:var(--gold);}
+.season-event-place.silver{color:#aab4c0;}
+.season-event-place.bronze{color:#cd7f32;}
+.season-event-place.other{color:var(--t2);}
+.season-event-stats{display:flex;gap:12px;font-size:12px;color:var(--t2);}
+.season-skills-bar{height:6px;background:var(--s4);border-radius:3px;overflow:hidden;margin-top:6px;}
+.season-skills-fill{height:100%;border-radius:3px;background:var(--gold);}
+
+/* ─── CV OVERLAY ─── */
+#cvOverlayPanel{position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:400;display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px;overflow-y:auto;}
+#cvOverlayPanel.open{display:flex;}
+.cvo-box{background:var(--s2);border:1px solid var(--b2);border-radius:14px;width:860px;max-width:98vw;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.7);}
+.cvo-hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--b1);background:var(--s1);}
+.cvo-title{font-family:var(--fd);font-weight:900;font-size:20px;flex:1;}
+.cvo-step-bar{display:flex;gap:5px;}
+.cvo-step-pip{background:var(--s4);color:var(--t3);padding:2px 9px;border-radius:3px;font-family:var(--fm);font-size:11px;}
+.cvo-step-pip.active{background:var(--gold-d);color:var(--gold);}
+.cvo-body{padding:16px 18px;}
+.cvo-canvas-wrap{position:relative;width:100%;background:#000;border-radius:8px;overflow:hidden;cursor:crosshair;}
+#cvoCanvas{display:block;width:100%;height:auto;}
+#cvoDrawCanvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;}
+.cvo-zones{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;}
+.cvo-zone{background:var(--s3);border:1px solid var(--b2);border-radius:var(--rl);padding:10px 12px;cursor:pointer;transition:border-color 0.1s;}
+.cvo-zone-hd{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.cvo-zone-color{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.cvo-zone-name{font-family:var(--fd);font-weight:700;font-size:13px;}
+.cvo-zone-status{font-size:11px;color:var(--t3);}
+.cvo-zone-val{font-family:var(--fm);font-size:22px;font-weight:700;color:var(--gold);margin-top:2px;}
+.cvo-zone.drawn{border-color:rgba(34,197,94,0.4);}
+.cvo-zone.drawn .cvo-zone-status{color:#22c55e;}
+.cvo-live{background:var(--s1);border-top:1px solid var(--b1);padding:12px 18px;display:flex;align-items:center;gap:16px;}
+.cvo-live-score{font-family:var(--fd);font-weight:900;font-size:32px;}
+.cvo-live-score .r{color:#ff6b65;}
+.cvo-live-score .sep{color:var(--t3);margin:0 6px;}
+.cvo-live-score .b{color:#6ab3ff;}
+.cvo-instr{background:var(--gold-d);border:1px solid rgba(168,85,247,0.2);border-radius:var(--r);padding:9px 12px;font-size:12px;color:var(--gold);line-height:1.6;margin-bottom:10px;}
+
+/* ─── SETTINGS MODAL ─── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;display:none;align-items:center;justify-content:center;}
+.modal-backdrop.open{display:flex;}
+.modal-box{background:var(--s2);border:1px solid var(--b2);border-radius:14px;width:460px;max-width:95vw;padding:26px 28px;box-shadow:0 20px 50px rgba(0,0,0,0.5);}
+
+/* ─── HOMEPAGE ─── */
+#homePage{position:fixed;inset:0;z-index:500;background:var(--s0);display:flex;flex-direction:column;overflow:hidden;}
+.hp-grid-bg{position:absolute;inset:0;background-image:linear-gradient(var(--b1) 1px,transparent 1px),linear-gradient(90deg,var(--b1) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;}
+.hp-accent{height:3px;background:linear-gradient(90deg,var(--blue),var(--gold),var(--red));flex-shrink:0;}
+.hp-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;padding:40px 60px;position:relative;}
+.hp-logo{text-align:center;}
+.hp-logo-text{font-family:var(--fd);font-weight:900;font-size:54px;letter-spacing:0.06em;line-height:1;margin-bottom:10px;}
+.hp-logo-text em{color:var(--gold);font-style:normal;}
+.hp-logo-tag{font-size:11px;color:var(--t3);letter-spacing:0.24em;text-transform:uppercase;font-family:var(--fd);font-weight:700;}
+.hp-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;width:100%;max-width:1160px;}
+.hp-card{background:var(--s2);border:1px solid var(--b1);border-radius:14px;padding:30px 26px;cursor:pointer;transition:transform 0.18s,box-shadow 0.18s,border-color 0.18s;display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden;}
+.hp-card::after{content:'';position:absolute;inset:0;opacity:0;transition:opacity 0.18s;pointer-events:none;}
+.hp-card:hover{transform:translateY(-4px);box-shadow:0 20px 48px rgba(0,0,0,0.45);}
+.hp-card:hover::after{opacity:1;}
+.hp-scout{border-top:3px solid var(--green);}
+.hp-scout::after{background:linear-gradient(140deg,rgba(34,197,94,0.07) 0%,transparent 55%);}
+.hp-scout:hover{border-color:rgba(34,197,94,0.5);border-top-color:var(--green);}
+.hp-notebook{border-top:3px solid var(--gold);}
+.hp-notebook::after{background:linear-gradient(140deg,rgba(168,85,247,0.07) 0%,transparent 55%);}
+.hp-notebook:hover{border-color:rgba(168,85,247,0.45);border-top-color:var(--gold);}
+.hp-cad{border-top:3px solid var(--blue);}
+.hp-cad::after{background:linear-gradient(140deg,rgba(26,125,223,0.07) 0%,transparent 55%);}
+.hp-cad:hover{border-color:rgba(26,125,223,0.45);border-top-color:var(--blue);}
+.hp-card-ico { font-size:28px; line-height:1; }
+.hp-card-title{font-family:var(--fd);font-weight:900;font-size:21px;letter-spacing:0.03em;line-height:1;}
+.hp-notebook .hp-card-title{color:var(--gold);}
+.hp-cad .hp-card-title{color:var(--blue);}
+.hp-sim .hp-card-title{color:var(--red);}
+.hp-card-desc{font-size:13px;color:var(--t2);line-height:1.65;flex:1;}
+.hp-card-cta{font-family:var(--fd);font-size:12px;font-weight:700;letter-spacing:0.08em;color:var(--t3);transition:color 0.15s;text-transform:uppercase;}
+.hp-scout:hover .hp-card-cta{color:var(--green);}
+.hp-notebook:hover .hp-card-cta{color:var(--gold);}
+.hp-cad:hover .hp-card-cta{color:var(--blue);}
+.hp-sim{border-top:3px solid var(--red);}
+.hp-sim::after{background:linear-gradient(140deg,rgba(232,48,42,0.07) 0%,transparent 55%);}
+.hp-sim:hover{border-color:rgba(232,48,42,0.45);border-top-color:var(--red);}
+.hp-sim:hover .hp-card-cta{color:var(--red);}
+.hp-skip{background:transparent;border:1px solid var(--b1);color:var(--t3);font-size:12px;cursor:pointer;font-family:var(--fb);letter-spacing:0.05em;padding:7px 18px;border-radius:var(--r);transition:all 0.15s;}
+.hp-skip:hover{color:var(--t2);border-color:var(--b2);}
+</style>
+</head>
+<body>
+
+<!-- ─── HOMEPAGE ─── -->
+<div id="homePage">
+  <div class="hp-grid-bg"></div>
+  <div class="hp-accent"></div>
+  <div class="hp-body">
+    <div class="hp-logo">
+      <div class="hp-logo-text">NEX<em>US</em></div>
+      <div class="hp-logo-tag">VEX Analysis &amp; Documentation Tool</div>
+    </div>
+
+    <!-- Setup / Account Row -->
+    <div style="display:flex;gap:12px;align-items:stretch;width:100%;max-width:1160px;flex-wrap:wrap;">
+
+      <!-- API Token -->
+      <div style="flex:1;min-width:220px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:16px 18px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;">RobotEvents API Token</div>
+        <input id="hpReToken" type="password" placeholder="eyJhbGciO…"
+          style="background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fm);font-size:12px;padding:7px 10px;border-radius:var(--r);outline:none;width:100%;"
+          oninput="hpSaveToken(this.value)" onfocus="this.type='text'" onblur="this.type='password'"/>
+        <div id="hpReStatus" style="font-size:11px;color:var(--t3);">Required for all API features</div>
+      </div>
+
+      <!-- My Team -->
+      <div style="flex:1;min-width:180px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:16px 18px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;">My Team Number</div>
+        <input id="hpMyTeam" type="text" placeholder="e.g. 12345A"
+          style="background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fd);font-size:18px;font-weight:700;padding:7px 10px;border-radius:var(--r);outline:none;width:100%;letter-spacing:0.05em;"
+          oninput="hpSaveTeam(this.value)"/>
+        <div style="font-size:11px;color:var(--t3);">Used as reference point in Analysis</div>
+      </div>
+
+      <!-- Google Account -->
+      <div style="flex:1;min-width:180px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rl);padding:16px 18px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;">Google Account</div>
+        <div style="flex:1;display:flex;align-items:center;" id="hpAuthArea" class="auth-area"></div>
+        <div style="font-size:11px;color:var(--t3);">Optional — enables Google Sheets export</div>
+      </div>
+    </div>
+
+    <!-- App Cards -->
+    <div class="hp-cards" style="grid-template-columns:repeat(5,1fr);gap:16px;">
+      <div class="hp-card" style="border-top:3px solid var(--t1);" onclick="enterApp('analysis')">
+        <div class="hp-card-ico"></div>
+        <div class="hp-card-title" style="color:var(--t1);">Analysis</div>
+        <div class="hp-card-desc">Regional rankings, MMR, skills scores, H2H comparison, and match predictor.</div>
+        <div class="hp-card-cta" style="color:var(--t3);">Open Analysis →</div>
+      </div>
+      <div class="hp-card hp-notebook" onclick="enterApp('notebook')">
+        <div class="hp-card-ico"></div>
+        <div class="hp-card-title">Notebook</div>
+        <div class="hp-card-desc">Document your design process, log team meetings, and export judge-ready notebooks.</div>
+        <div class="hp-card-cta">Open Notebook →</div>
+      </div>
+      <div class="hp-card hp-cad" onclick="enterApp('cad')">
+        <div class="hp-card-ico"></div>
+        <div class="hp-card-title">CAD Viewer</div>
+        <div class="hp-card-desc">Import OBJ and STL files to visualize and inspect robot designs in full 3D.</div>
+        <div class="hp-card-cta">Open CAD Viewer →</div>
+      </div>
+      <div class="hp-card hp-sim" onclick="enterApp('simulator')">
+        <div class="hp-card-ico"></div>
+        <div class="hp-card-title">Simulator</div>
+        <div class="hp-card-desc">Drive your robot on a Push Back field, tune PID, and test autonomous routines.</div>
+        <div class="hp-card-cta">Open Simulator →</div>
+      </div>
+      <div class="hp-card" style="border-top:3px solid #f59e0b;" onclick="enterApp('ide')">
+        <div class="hp-card-ico"></div>
+        <div class="hp-card-title" style="color:#f59e0b;">Code IDE</div>
+        <div class="hp-card-desc">Write, build, and upload PROS robot code with Monaco editor and LemLib support.</div>
+        <div class="hp-card-cta" >Open IDE →</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCOUT PAGE ─── -->
+<div id="scoutPage" style="position:fixed;inset:0;background:var(--s0);z-index:160;display:none;flex-direction:column;overflow:hidden;">
+
+  <!-- Scout Topbar -->
+  <div class="topbar">
+    <button class="btn-o" onclick="xPrompt(closeScoutPage)" style="font-size:12px;">← Home</button>
+    <div class="sep"></div>
+    <div class="logo">NEX<em>US</em> <span style="font-size:13px;font-weight:400;color:var(--t2);">Scouting</span></div>
+    <div class="sep"></div>
+    <input class="ev-input" id="evIn" placeholder="Paste RobotEvents event URL — e.g. robotevents.com/…/RE-VRC-25-1234.html"/>
+    <button class="btn-g" id="ldBtn" onclick="loadEvent()">Load Event</button>
+    <button class="btn-o" onclick="openSettings()">⚙ Settings</button>
+    <div style="display:flex;align-items:center;gap:7px;margin-left:4px;" id="authArea" class="auth-area"></div>
+    <div class="status-row"><div class="sdot" id="sd"></div><span id="stxt">No event loaded</span></div>
+    <div class="sep"></div>
+    <button class="sb-tog" data-sb="scoutLeft" data-dir="l" onclick="toggleSb('scoutLeft')" title="Hide matches panel">◁</button>
+    <button class="sb-tog" data-sb="scoutRight" data-dir="r" onclick="toggleSb('scoutRight')" title="Hide rankings panel">▷</button>
+    <button class="pg-fs" onclick="toggleFs()" style="margin-left:4px;">⛶ Fullscreen</button>
+  </div>
+
+  <!-- Scout Layout (no video panel) -->
+  <div class="layout">
+
+    <!-- LEFT: MATCH LIST -->
+    <div class="pl sb" id="scoutLeft">
+      <div class="ph"><span class="ph-t">Matches</span><button class="btn-o" style="font-size:11px;padding:3px 8px;" onclick="refreshMatches()">↻</button></div>
+      <div class="scr" id="mList"><div class="empty">Load an event above to see matches</div></div>
+    </div>
+
+    <!-- CENTER: Scout area -->
+    <div class="pc" style="overflow-y:auto;">
+      <div class="sa" id="sArea">
+        <div class="empty" style="margin-top:50px;">
+          <div style="font-size:34px;opacity:0.22;">🏆</div>
+          <p>Select a match from the left to begin scouting</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: RANKINGS -->
+    <div class="pr sb" id="scoutRight">
+      <div class="ev-hd"><div class="ev-nm" id="evNm">No event loaded</div><div class="ev-mt" id="evMt">—</div></div>
+      <div class="ph"><span class="ph-t">Event Rankings</span></div>
+      <div class="scr" id="rkList"><div class="empty" style="padding:14px;">—</div></div>
+      <div class="ex">
+        <h4>Export Scouting Data</h4>
+        <button class="xb" onclick="exportXLSX()">Download .xlsx</button>
+        <button class="xb" onclick="exportSheets()">Sync to Google Sheets</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TEAM ANALYSIS PAGE ─── -->
+<div id="teamPage">
+  <div class="tp-topbar">
+    <button class="tp-back" onclick="closeTeamPage()">← Back</button>
+    <div class="sep"></div>
+    <div class="tp-team-num" id="tpTeamNum">—</div>
+    <div class="tp-team-org" id="tpTeamOrg"></div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+      <button class="btn-o" onclick="document.getElementById('cvImportInput').click()">📥 Import CV Data</button>
+      <input type="file" id="cvImportInput" accept=".json" style="display:none;" onchange="importCVData(event)"/>
+      <button class="btn-o" onclick="exportTeamData()">Export ↓</button>
+    </div>
+  </div>
+  <div class="tp-tabs">
+    <button class="tp-tab active" id="tabEvent" onclick="switchTab('event')">Event Stats<span class="tp-tab-badge" id="tabEventBadge">—</span></button>
+    <button class="tp-tab" id="tabSeason" onclick="switchTab('season')">Season Stats<span class="tp-tab-badge" id="tabSeasonBadge">—</span></button>
+  </div>
+  <div class="tp-body" id="tpEventTab">
+    <div class="tp-main" id="tpMain"><div class="empty" style="margin-top:60px;"><p>Loading…</p></div></div>
+    <div class="tp-side" id="tpSide"><div class="empty"><p>—</p></div></div>
+  </div>
+  <div class="tp-body" id="tpSeasonTab" style="display:none;">
+    <div class="tp-main" id="tpSeasonMain"><div class="empty" style="margin-top:60px;"><p>Click Season Stats to load…</p></div></div>
+    <div class="tp-side" id="tpSeasonSide"><div class="empty"><p>—</p></div></div>
+  </div>
+</div>
+
+<!-- ─── CV SCORE DETECTION OVERLAY ─── -->
+<div id="cvOverlayPanel">
+  <div class="cvo-box">
+    <div class="cvo-hd">
+      <div class="cvo-title">🎯 Video Score Detection</div>
+      <div class="cvo-step-bar">
+        <span class="cvo-step-pip active" id="cvStep1">1 Capture</span>
+        <span class="cvo-step-pip" id="cvStep2">2 Draw Zones</span>
+        <span class="cvo-step-pip" id="cvStep3">3 Live Detect</span>
+      </div>
+      <button class="btn-o" style="margin-left:10px;" onclick="closeCVOverlay()">✕ Close</button>
+    </div>
+    <div class="cvo-body">
+      <div id="cvStepCapture">
+        <div class="cvo-instr">📹 Load a local video file, pause it at the desired frame, then click <strong>Capture Frame</strong>. Or upload a screenshot directly.</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+          <label class="btn-o" style="cursor:pointer;">🎬 Load Video File<input type="file" accept="video/*" style="display:none;" onchange="loadCVVideo(event)"/></label>
+          <button class="btn-g" onclick="captureFrame()">📸 Capture Frame</button>
+          <span style="font-size:12px;color:var(--t3);">or</span>
+          <label class="btn-o" style="cursor:pointer;">Upload Screenshot<input type="file" accept="image/*" style="display:none;" onchange="loadScreenshot(event)"/></label>
+        </div>
+        <video id="cvVideoPreview" style="display:none;max-width:100%;max-height:220px;border-radius:6px;background:#000;margin-bottom:6px;" controls></video>
+        <div id="cvNoVideoMsg" style="font-size:12px;color:var(--gold);display:none;margin-top:6px;"></div>
+      </div>
+      <div id="cvStepDraw" style="display:none;">
+        <div class="cvo-instr"><strong>Click and drag</strong> to draw each zone. Active zone: <strong id="cvCurrentZoneName" style="color:var(--gold);">Red Goal Zone</strong></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;" id="cvZoneBtns"></div>
+        <div class="cvo-canvas-wrap" id="cvCanvasWrap">
+          <canvas id="cvoCanvas"></canvas>
+          <canvas id="cvoDrawCanvas" onmousedown="cvStartDraw(event)" onmousemove="cvMoveDraw(event)" onmouseup="cvEndDraw(event)"></canvas>
+        </div>
+        <div class="cvo-zones" id="cvZoneList"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn-g" onclick="startDetection()">▶ Start Detection</button>
+          <button class="btn-o" onclick="resetZones()">↺ Reset</button>
+          <button class="btn-o" onclick="saveCVZones()">💾 Save Zones</button>
+        </div>
+      </div>
+      <div id="cvStepLive" style="display:none;">
+        <div class="cvo-canvas-wrap" style="margin-bottom:10px;">
+          <canvas id="cvoLiveCanvas" style="display:block;width:100%;height:auto;"></canvas>
+        </div>
+        <div class="cvo-zones" id="cvLiveZones"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn-o" onclick="stopDetection()">⏹ Stop</button>
+          <button class="btn-o" onclick="showCVStep('draw')">✏️ Edit Zones</button>
+          <button class="btn-g" onclick="pushDetectedScores()">📥 Push to Scoreboard</button>
+        </div>
+      </div>
+    </div>
+    <div class="cvo-live" id="cvLiveBar" style="display:none;">
+      <div class="cvo-live-score"><span class="r" id="cvLiveRed">0</span><span class="sep">:</span><span class="b" id="cvLiveBlue">0</span></div>
+      <div>
+        <div style="font-size:12px;color:var(--t2);" id="cvLiveStatus">Detecting…</div>
+        <div style="font-family:var(--fm);font-size:11px;color:var(--t3);" id="cvLiveFPS">— fps</div>
+      </div>
+      <div style="margin-left:auto;font-size:11px;color:var(--t3);">Auton: <strong id="cvAutonWinner" style="color:var(--gold);">TBD</strong></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SETTINGS MODAL ─── -->
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal-box">
+    <div style="font-family:var(--fd);font-weight:900;font-size:22px;margin-bottom:4px;">⚙ Settings</div>
+    <div style="font-size:12px;color:var(--t3);margin-bottom:20px;">Keys stored in your browser only.</div>
+    <div style="margin-bottom:16px;">
+      <label style="font-size:12px;color:var(--t2);display:block;margin-bottom:5px;">RobotEvents API Token <a href="https://www.robotevents.com/api/v2" target="_blank" style="color:var(--gold);margin-left:6px;">Get token →</a></label>
+      <input id="settingsReToken" type="password" placeholder="eyJhbGciO…"
+        style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fm);font-size:13px;padding:9px 11px;border-radius:var(--r);outline:none;margin-bottom:4px;"
+        oninput="this.style.borderColor=this.value.length>20?'var(--green)':'var(--b2)'"/>
+      <div id="settingsReStatus" style="font-size:11px;color:var(--t3);">Stored in your browser only.</div>
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="font-size:12px;color:var(--t2);display:block;margin-bottom:5px;">My Team Number <span style="color:var(--t3);font-size:11px;">— used as the reference point in Analysis</span></label>
+      <input id="settingsMyTeam" type="text" placeholder="e.g. 12345A"
+        style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fm);font-size:13px;padding:9px 11px;border-radius:var(--r);outline:none;"
+        oninput="this.style.borderColor=this.value.trim().length>1?'var(--green)':'var(--b2)'"/>
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="font-size:12px;color:var(--t2);display:block;margin-bottom:5px;">Google Account</label>
+      <div id="settingsGoogleStatus" style="background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);padding:8px 11px;font-size:13px;color:var(--t2);">Not signed in</div>
+    </div>
+    <div style="display:flex;gap:9px;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--b1);">
+      <button onclick="closeSettings()" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-family:var(--fb);font-size:13px;padding:7px 16px;border-radius:var(--r);cursor:pointer;">Cancel</button>
+      <button onclick="saveSettings()" style="background:var(--gold);color:#ffffff;font-family:var(--fd);font-size:14px;font-weight:700;letter-spacing:0.06em;padding:7px 20px;border:none;border-radius:var(--r);cursor:pointer;">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── ANALYSIS PAGE ─── -->
+<div id="analysisPage" style="position:fixed;inset:0;background:var(--s0);z-index:165;display:none;flex-direction:column;overflow:hidden;">
+
+  <!-- Top bar -->
+  <div style="background:var(--s2);border-bottom:1px solid var(--b1);height:50px;display:flex;align-items:center;padding:0 14px;gap:9px;flex-shrink:0;">
+    <button id="anBackBtn" class="btn-o" onclick="anBackToList()" style="display:none;font-size:12px;">← Back</button>
+    <div id="anBackSep" class="sep" style="display:none;"></div>
+    <div style="font-family:var(--fd);font-weight:900;font-size:18px;">NEX<em style="color:var(--gold);">US</em> <span style="font-size:13px;font-weight:400;color:var(--t2);">Analysis</span></div>
+    <div class="sep"></div>
+    <div id="anRegionBadge" style="font-size:11px;color:var(--t3);font-family:var(--fd);">No team set</div>
+    <div style="flex:1;"></div>
+    <button id="anCompareBtn" class="btn-o" onclick="anOpenCompare()" style="display:none;font-size:12px;border-color:var(--gold);color:var(--gold);">Compare (0)</button>
+    <button class="btn-o" style="font-size:12px;" onclick="anExportCSV()">↓ Export CSV</button>
+    <button class="btn-o" style="font-size:12px;" onclick="loadAnalysisData(true)">⟳ Refresh</button>
+    <div class="sep"></div>
+    <button class="sb-tog" data-sb="anMyCard" data-dir="l" onclick="toggleSb('anMyCard')" title="Hide my team panel">◁</button>
+    <button class="sb-tog" data-sb="anSidebar" data-dir="r" onclick="toggleSb('anSidebar')" title="Hide tools panel" style="margin-right:4px;">▷</button>
+    <button class="pg-fs" onclick="toggleFs()">⛶ Fullscreen</button>
+    <div class="sep"></div>
+    <button class="btn-o" onclick="xPrompt(closeAnalysis)" style="font-size:12px;">← Home</button>
+  </div>
+
+  <!-- Body -->
+  <div style="display:flex;flex:1;overflow:hidden;position:relative;">
+
+    <!-- LEFT: My Team card -->
+    <div id="anMyCard" class="sb" style="width:220px;background:var(--s1);border-right:1px solid var(--b1);overflow-y:auto;flex-shrink:0;padding:14px 12px;display:flex;flex-direction:column;gap:12px;">
+      <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;">My Team</div>
+      <div id="anMyCardContent"><div style="font-size:12px;color:var(--t3);text-align:center;padding:30px 0;">Open Settings to set<br>your team number.</div></div>
+    </div>
+
+    <!-- CENTER: Regional table -->
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+
+      <!-- Table header / sort bar -->
+      <div style="background:var(--s2);border-bottom:1px solid var(--b1);padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <div style="font-size:12px;color:var(--t2);">Sort by:</div>
+        <button id="anSort_mmr" class="btn-o an-sort-btn active" onclick="anSetSort('mmr')" style="font-size:11px;padding:3px 9px;">MMR</button>
+        <button id="anSort_skills"    class="btn-o an-sort-btn"        onclick="anSetSort('skills')"    style="font-size:11px;padding:3px 9px;">Skills</button>
+        <button id="anSort_winrate"   class="btn-o an-sort-btn"        onclick="anSetSort('winrate')"   style="font-size:11px;padding:3px 9px;">Win Rate</button>
+        <button id="anSort_events"    class="btn-o an-sort-btn"        onclick="anSetSort('events')"    style="font-size:11px;padding:3px 9px;">Events</button>
+        <div style="flex:1;"></div>
+        <input id="anSearchInput" placeholder="Search team or org…" oninput="anSearch(this.value)" style="background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fm);font-size:11px;padding:3px 8px;border-radius:var(--r);outline:none;width:160px;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--b2)'"/>
+        <div id="anTableMeta" style="font-size:11px;color:var(--t3);"></div>
+      </div>
+
+      <!-- Table -->
+      <div style="flex:1;overflow-y:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;" id="anTable">
+          <thead>
+            <tr style="background:var(--s2);position:sticky;top:0;z-index:2;">
+              <th style="padding:8px 10px;text-align:left;font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b1);width:36px;">#</th>
+              <th style="padding:8px 10px;text-align:left;font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b1);">Team</th>
+              <th style="padding:8px 10px;text-align:left;font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b1);">Organization</th>
+              <th style="padding:8px 10px;text-align:right;font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b1);">Skills</th>
+              <th style="padding:8px 10px;text-align:right;font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b1);">Win%</th>
+              <th style="padding:8px 10px;text-align:right;font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b1);">Best Rank</th>
+              <th style="padding:8px 10px;text-align:right;font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b1);">Events</th>
+              <th style="padding:8px 10px;text-align:right;font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b1);">MMR</th>
+            </tr>
+          </thead>
+          <tbody id="anTableBody">
+            <tr><td colspan="8" style="padding:40px;text-align:center;color:var(--t3);font-size:13px;">Open Settings and set your team number to load regional data.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DETAIL VIEW overlay (full-screen within body) -->
+    <div id="anDetailView" style="position:absolute;inset:0;background:var(--s0);display:none;flex-direction:row;overflow:hidden;z-index:5;">
+      <div id="anDetailLeft" style="width:270px;background:var(--s1);border-right:1px solid var(--b1);overflow-y:auto;flex-shrink:0;padding:14px 12px;"></div>
+      <div id="anDetailCenter" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;"></div>
+      <div id="anDetailRight" style="width:210px;background:var(--s1);border-left:1px solid var(--b1);flex-shrink:0;display:flex;flex-direction:column;overflow-y:auto;"></div>
+    </div>
+
+    <!-- COMPARE VIEW overlay -->
+    <div id="anCompareView" style="position:absolute;inset:0;background:var(--s0);display:none;flex-direction:column;overflow:hidden;z-index:6;">
+      <div style="background:var(--s2);border-bottom:1px solid var(--b1);height:44px;display:flex;align-items:center;padding:0 14px;gap:9px;flex-shrink:0;">
+        <button class="btn-o" onclick="anCloseCompare()" style="font-size:11px;">← Back</button>
+        <div style="font-size:12px;color:var(--t2);">Team Comparison</div>
+        <div style="flex:1;"></div>
+        <button class="btn-o" onclick="AN.compareTeams=[];anUpdateCompareBtn();anCloseCompare();anRenderDetailRight();" style="font-size:11px;color:var(--t3);">Clear All</button>
+      </div>
+      <div id="anCompareContent" style="flex:1;overflow-y:auto;padding:16px;"></div>
+    </div>
+
+    <!-- RIGHT: Actions sidebar -->
+    <div id="anSidebar" class="sb" style="width:220px;background:var(--s1);border-left:1px solid var(--b1);overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column;">
+
+      <!-- Head-to-Head -->
+      <div class="an-sidebar-section">
+        <div class="an-sidebar-title">Head-to-Head</div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:7px;">Compare any team vs your team in detail.</div>
+        <input id="anH2HInput" class="an-sidebar-input" placeholder="Team # (e.g. 229V)" oninput="anH2HPreview(this.value)"/>
+        <button class="btn-o an-sidebar-btn" onclick="anOpenH2H()">Compare ▶</button>
+        <div id="anH2HHint" style="font-size:10px;color:var(--t3);margin-top:5px;min-height:14px;"></div>
+        <div id="anH2HResult"></div>
+      </div>
+
+      <!-- Match Predictor -->
+      <div class="an-sidebar-section">
+        <div class="an-sidebar-title">Match Predictor</div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:8px;">Predict win probability using MMR + CCWM.</div>
+        <div style="font-size:10px;color:#ff7b77;font-family:var(--fd);font-weight:700;letter-spacing:0.08em;margin-bottom:4px;">Red Alliance</div>
+        <input id="anPredIn_R1" class="an-sidebar-input" style="margin-bottom:3px;" placeholder="Team 1 #" oninput="anPredHint('R1')"/>
+        <div id="anPredHint_R1" style="font-size:10px;min-height:13px;margin-bottom:5px;"></div>
+        <input id="anPredIn_R2" class="an-sidebar-input" style="margin-bottom:3px;" placeholder="Team 2 #" oninput="anPredHint('R2')"/>
+        <div id="anPredHint_R2" style="font-size:10px;min-height:13px;margin-bottom:7px;"></div>
+        <div style="font-size:10px;color:#60a5fa;font-family:var(--fd);font-weight:700;letter-spacing:0.08em;margin-bottom:4px;">Blue Alliance</div>
+        <input id="anPredIn_B1" class="an-sidebar-input" style="margin-bottom:3px;" placeholder="Team 1 #" oninput="anPredHint('B1')"/>
+        <div id="anPredHint_B1" style="font-size:10px;min-height:13px;margin-bottom:5px;"></div>
+        <input id="anPredIn_B2" class="an-sidebar-input" style="margin-bottom:3px;" placeholder="Team 2 #" oninput="anPredHint('B2')"/>
+        <div id="anPredHint_B2" style="font-size:10px;min-height:13px;margin-bottom:7px;"></div>
+        <button class="btn-o an-sidebar-btn" onclick="anRunPredictor()">Predict ▶</button>
+        <div id="anPredResult"></div>
+      </div>
+
+      <!-- Regional Competitions -->
+      <div class="an-sidebar-section">
+        <div class="an-sidebar-title">Regional Events</div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:7px;">Filter the table by a specific event.</div>
+        <button class="btn-o an-sidebar-btn" onclick="anLoadEvents()">Load Events</button>
+        <div id="anEventList" style="margin-top:8px;display:flex;flex-direction:column;gap:4px;"></div>
+      </div>
+
+      <!-- Change Region -->
+      <div class="an-sidebar-section">
+        <div class="an-sidebar-title">Change Region</div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:7px;">Override the auto-detected region.</div>
+        <input id="anRegionInput" class="an-sidebar-input" placeholder="e.g. Texas" />
+        <button class="btn-o an-sidebar-btn" onclick="anApplyRegion()">Apply</button>
+        <button class="btn-o an-sidebar-btn" style="margin-top:3px;font-size:10px;color:var(--t3);" onclick="anClearRegion()">Reset to auto</button>
+      </div>
+
+      <!-- Season -->
+      <div class="an-sidebar-section">
+        <div class="an-sidebar-title">Season</div>
+        <div id="anSeasonBadge" style="font-size:11px;color:var(--t2);margin-bottom:8px;word-break:break-all;">Not loaded</div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:7px;">If the wrong season is shown, paste the RobotEvents season ID below.</div>
+        <input id="anSeasonInput" class="an-sidebar-input" placeholder="e.g. 190" type="number"/>
+        <button class="btn-o an-sidebar-btn" onclick="anApplySeason()">Apply</button>
+        <button class="btn-o an-sidebar-btn" style="margin-top:3px;font-size:10px;color:var(--t3);" onclick="anClearSeason()">Reset to auto</button>
+        <div style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.5;">Find season ID: open any current event on robotevents.com, the URL contains <code style="color:var(--t2);">/seasons/&lt;id&gt;</code></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<style>
+.an-sort-btn.active { background:var(--gold); color:#ffffff; border-color:var(--gold); }
+.an-row-mine { background: rgba(168,85,247,0.07) !important; outline: 1px solid rgba(168,85,247,0.3); outline-offset: -1px; }
+.an-row-mine td { color: var(--t1) !important; }
+.an-delta-pos { color: #ff7b77; } /* they beat me = bad for me */
+.an-delta-neg { color: #22c55e; } /* I beat them = good for me */
+.an-delta-eq  { color: var(--t3); }
+.an-skel { height:13px; background:var(--s4); border-radius:3px; animation:skelPulse 1.4s ease-in-out infinite; display:inline-block; }
+.an-sidebar-section { padding:14px 13px; border-bottom:1px solid var(--b1); }
+.an-sidebar-title { font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:7px; }
+.an-sidebar-input { width:100%;box-sizing:border-box;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fm);font-size:12px;padding:5px 8px;border-radius:var(--r);outline:none;margin-bottom:6px; }
+.an-sidebar-input:focus { border-color:var(--gold); }
+.an-sidebar-btn { width:100%;box-sizing:border-box;font-size:11px;padding:5px 0;text-align:center; }
+.an-event-chip { font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid var(--b2);background:var(--s2);color:var(--t2);cursor:pointer;text-align:left;width:100%;box-sizing:border-box; }
+.an-event-chip.active { border-color:var(--gold);color:var(--gold);background:rgba(168,85,247,0.07); }
+.an-h2h-row { display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--b1); }
+.an-h2h-label { font-size:10px;color:var(--t3);text-align:center;margin-bottom:8px;font-family:var(--fd);text-transform:uppercase;letter-spacing:0.1em; }
+.an-h2h-val { font-family:var(--fm);font-size:14px;font-weight:700; }
+.an-h2h-stat { font-size:10px;color:var(--t3); }
+.an-chart-card { background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:14px 16px; }
+.an-chart-title { font-size:10px;color:var(--t3);font-family:var(--fd);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px; }
+.an-rank-row { display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--b1); }
+.an-detail-stat-card { background:var(--s2);border-radius:6px;padding:9px 10px;margin-bottom:8px; }
+</style>
+
+<!-- ─── NOTEBOOK PAGE ─── -->
+<div id="notebookPage" style="position:fixed;inset:0;background:var(--s0);z-index:150;display:none;flex-direction:column;overflow:hidden;">
+  <iframe id="notebookFrame" style="flex:1;width:100%;border:none;" allowfullscreen></iframe>
+</div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+  // Proxy window.electronAPI calls from the notebook iframe (preloads don't run in iframes).
+  window.addEventListener('message', async e => {
+    if (e.data?.type !== 'nb-api-req' || !window.electronAPI) return;
+    const { id, method, args } = e.data;
+    try {
+      const result = await window.electronAPI[method](...(args || []));
+      e.source.postMessage({ type: 'nb-api-res', id, result }, '*');
+    } catch (err) {
+      e.source.postMessage({ type: 'nb-api-res', id, error: err.message }, '*');
+    }
+  });
+  </script>
+
+<div id="stlPage" style="position:fixed;inset:0;background:var(--s0);z-index:160;display:none;flex-direction:column;overflow:hidden;">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b1);height:50px;display:flex;align-items:center;padding:0 14px;gap:9px;flex-shrink:0;">
+    <button class="btn-o" onclick="xPrompt(closeSTLViewer)" style="font-size:12px;">← Home</button>
+    <div class="sep"></div>
+    <div style="font-family:var(--fd);font-weight:900;font-size:18px;">NEX<em style="color:var(--gold);">US</em> <span style="font-size:13px;font-weight:400;color:var(--t2);">CAD Viewer</span></div>
+    <div class="sep"></div>
+    <button class="btn-g" onclick="stlImport()" style="font-size:14px;padding:6px 16px;">+ Import Model</button>
+    <button class="btn-o" id="stlSnapshotBtn" onclick="stlSnapshot()" style="display:none;">📸 Save View</button>
+    <button class="btn-o" id="stlOrientBtn" onclick="stlToggleReorient()" style="display:none;">⟳ Reorient</button>
+    <button class="btn-o" id="stlConfigBtn" onclick="stlToggleConfigPanel()">⚙ Config</button>
+    <div class="auth-area" style="display:flex;align-items:center;gap:7px;margin-left:auto;"></div>
+    <div class="sep"></div>
+    <button class="sb-tog" data-sb="cadLib" data-dir="l" onclick="toggleSb('cadLib')" title="Hide model library">◁</button>
+    <button class="pg-fs" onclick="toggleFs()" style="margin-left:4px;">⛶ Fullscreen</button>
+  </div>
+  <div style="display:flex;flex:1;overflow:hidden;">
+    <!-- Model library sidebar -->
+    <div id="cadLib" class="sb" style="width:200px;background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;flex-shrink:0;">
+      <div style="padding:10px 12px;border-bottom:1px solid var(--b1);font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;">Model Library</div>
+      <div style="overflow-y:auto;flex:1;" id="stlLibraryList"><div class="empty" style="padding:20px 10px;font-size:12px;">No models yet.<br>Click + Import Model</div></div>
+    </div>
+    <!-- 3D viewport -->
+    <div style="flex:1;position:relative;background:#0a0a10;overflow:hidden;" id="stlViewport">
+      <canvas id="stlCanvas" style="display:block;width:100%;height:100%;"></canvas>
+      <div id="stlEmpty" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--t3);pointer-events:none;">
+        <div style="font-size:40px;opacity:0.15;">🔩</div>
+        <p style="font-size:13px;">Import an OBJ or STL file to view your robot CAD</p>
+      </div>
+      <!-- Reorient panel — shown when reorient mode is active -->
+      <div id="stlOrientPanel" style="display:none;position:absolute;top:10px;left:10px;background:rgba(10,10,20,0.92);border:1px solid var(--b1);border-radius:7px;padding:10px 12px;font-size:11px;color:var(--t2);z-index:10;">
+        <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;margin-bottom:8px;">Orient Model</div>
+        <div style="display:grid;grid-template-columns:16px 1fr 1fr;align-items:center;gap:4px 6px;">
+          <span style="color:var(--t3);font-weight:600;">X</span>
+          <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlRotateModel('x',-90)">−90°</button>
+          <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlRotateModel('x', 90)">+90°</button>
+          <span style="color:var(--t3);font-weight:600;">Y</span>
+          <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlRotateModel('y',-90)">−90°</button>
+          <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlRotateModel('y', 90)">+90°</button>
+          <span style="color:var(--t3);font-weight:600;">Z</span>
+          <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlRotateModel('z',-90)">−90°</button>
+          <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlRotateModel('z', 90)">+90°</button>
+        </div>
+        <button class="btn-o" style="font-size:11px;padding:3px 0;width:100%;margin-top:6px;text-align:center;" onclick="stlResetOrientation()">Reset</button>
+        <div style="border-top:1px solid var(--b1);margin-top:8px;padding-top:8px;">
+          <div style="font-size:10px;color:var(--t3);margin-bottom:5px;">Vertical Position</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:3px;">
+            <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlMoveModel(0.5)">↑↑</button>
+            <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlMoveModel(0.1)">↑</button>
+            <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlMoveModel(-0.1)">↓</button>
+            <button class="btn-o" style="font-size:11px;padding:3px 0;text-align:center;" onclick="stlMoveModel(-0.5)">↓↓</button>
+          </div>
+        </div>
+        <div style="margin-top:7px;font-size:10px;color:var(--t3);">Drag — rotate &nbsp;·&nbsp; Shift+drag — move up/down</div>
+      </div>
+      <!-- Viewport controls hint -->
+      <div id="stlControlsHint" style="position:absolute;bottom:10px;right:12px;font-size:11px;color:var(--t3);pointer-events:none;text-align:right;line-height:1.8;">
+        Left drag — orbit &nbsp;·&nbsp; Right drag — pan &nbsp;·&nbsp; Scroll — zoom
+      </div>
+      <!-- Loading indicator -->
+      <div id="stlLoading" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--t1);">
+        <div style="width:36px;height:36px;border:3px solid var(--s5);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        <span style="font-size:13px;" id="stlLoadingMsg">Loading model…</span>
+      </div>
+    </div>
+    <!-- CAD Config Panel sidebar -->
+    <div id="stlConfigPanel" style="width:260px;background:var(--s1);border-left:1px solid var(--b1);display:none;flex-direction:column;overflow:hidden;flex-shrink:0;">
+      <div style="padding:10px 12px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;">Robot Config</div>
+        <div style="display:flex;gap:5px;">
+          <button class="btn-o" style="font-size:11px;padding:4px 8px;" onclick="cadLoadConfig()">📂</button>
+          <button class="btn-g" style="font-size:11px;padding:4px 10px;" onclick="cadSaveConfig()">Save .json</button>
+        </div>
+      </div>
+      <div style="padding:10px 12px;overflow-y:auto;flex:1;">
+        <!-- Robot name -->
+        <div style="margin-bottom:12px;">
+          <label style="font-size:10px;font-family:var(--fd);font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;">Robot Name</label>
+          <input class="ann-input" placeholder="Robot name" id="cadCfgName" oninput="STL.cadConfig&&(STL.cadConfig.name=this.value)" style="width:100%;margin-top:4px;"/>
+        </div>
+        <!-- Drivetrain -->
+        <div style="margin-bottom:12px;">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;">Drivetrain</div>
+          <div style="display:grid;grid-template-columns:1fr;gap:5px;">
+            <div><label style="font-size:10px;color:var(--t3);">Type</label>
+              <select class="ann-input" id="cadCfgDriveType" oninput="STL.cadConfig&&(STL.cadConfig.drivetrain.type=this.value)" style="width:100%;margin-top:2px;">
+                <option value="tank">Tank</option>
+                <option value="x-drive">X-Drive</option>
+                <option value="mecanum">Mecanum</option>
+              </select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+              <div><label style="font-size:10px;color:var(--t3);">Wheel Ø (in)</label>
+                <input type="number" class="ann-input" id="cadCfgWheelDia" step="0.25" oninput="STL.cadConfig&&(STL.cadConfig.drivetrain.wheelDiameter=+this.value)" style="width:100%;margin-top:2px;"/>
+              </div>
+              <div><label style="font-size:10px;color:var(--t3);">Max RPM</label>
+                <input type="number" class="ann-input" id="cadCfgMaxRpm" oninput="STL.cadConfig&&(STL.cadConfig.drivetrain.maxRPM=+this.value)" style="width:100%;margin-top:2px;"/>
+              </div>
+              <div><label style="font-size:10px;color:var(--t3);">Track Width (in)</label>
+                <input type="number" class="ann-input" id="cadCfgTrackWidth" step="0.5" oninput="STL.cadConfig&&(STL.cadConfig.drivetrain.trackWidth=+this.value)" style="width:100%;margin-top:2px;"/>
+              </div>
+              <div><label style="font-size:10px;color:var(--t3);">Robot Width (in)</label>
+                <input type="number" class="ann-input" id="cadCfgRobotWidth" step="0.5" oninput="STL.cadConfig&&(STL.cadConfig.drivetrain.robotWidth=+this.value)" style="width:100%;margin-top:2px;"/>
+              </div>
+              <div><label style="font-size:10px;color:var(--t3);">Robot Length (in)</label>
+                <input type="number" class="ann-input" id="cadCfgRobotLength" step="0.5" oninput="STL.cadConfig&&(STL.cadConfig.drivetrain.robotLength=+this.value)" style="width:100%;margin-top:2px;"/>
+              </div>
+              <div><label style="font-size:10px;color:var(--t3);">Gear Ratio</label>
+                <input type="number" class="ann-input" id="cadCfgGearRatio" step="0.1" min="0.1" oninput="STL.cadConfig&&(STL.cadConfig.drivetrain.gearRatio=+this.value)" style="width:100%;margin-top:2px;"/>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Motors -->
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;">Motors</div>
+            <button class="btn-o" style="font-size:11px;padding:2px 7px;" onclick="cadAddMotor()">+ Add</button>
+          </div>
+          <div id="cadMotorList"><div style="font-size:11px;color:var(--t3);padding:4px 0;">No motors — click + Add</div></div>
+        </div>
+        <!-- Pistons -->
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;">Pistons / Pneumatics</div>
+            <button class="btn-o" style="font-size:11px;padding:2px 7px;" onclick="cadAddPiston()">+ Add</button>
+          </div>
+          <div id="cadPistonList"><div style="font-size:11px;color:var(--t3);padding:4px 0;">No pistons — click + Add</div></div>
+        </div>
+        <!-- Sensors -->
+        <div style="margin-bottom:12px;">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;">Sensors</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+            <div><label style="font-size:10px;color:var(--t3);">IMU Port</label>
+              <input type="number" class="ann-input" id="cadCfgImuPort" oninput="STL.cadConfig&&(STL.cadConfig.sensors.imuPort=+this.value)" style="width:100%;margin-top:2px;"/>
+            </div>
+            <div><label style="font-size:10px;color:var(--t3);">Odom Wheel Ø</label>
+              <input type="number" class="ann-input" id="cadCfgOdomWheelDia" step="0.25" oninput="STL.cadConfig&&(STL.cadConfig.sensors.odomWheelDia=+this.value)" style="width:100%;margin-top:2px;"/>
+            </div>
+            <div><label style="font-size:10px;color:var(--t3);">Odom Track Width</label>
+              <input type="number" class="ann-input" id="cadCfgOdomTrackWidth" step="0.5" oninput="STL.cadConfig&&(STL.cadConfig.sensors.odomTrackWidth=+this.value)" style="width:100%;margin-top:2px;"/>
+            </div>
+            <div><label style="font-size:10px;color:var(--t3);">Left Enc Port</label>
+              <input type="number" class="ann-input" id="cadCfgLeftEnc" oninput="STL.cadConfig&&(STL.cadConfig.sensors.leftEncoderPort=+this.value)" style="width:100%;margin-top:2px;"/>
+            </div>
+            <div><label style="font-size:10px;color:var(--t3);">Right Enc Port</label>
+              <input type="number" class="ann-input" id="cadCfgRightEnc" oninput="STL.cadConfig&&(STL.cadConfig.sensors.rightEncoderPort=+this.value)" style="width:100%;margin-top:2px;"/>
+            </div>
+            <div><label style="font-size:10px;color:var(--t3);">Mid Enc Port</label>
+              <input type="number" class="ann-input" id="cadCfgMidEnc" oninput="STL.cadConfig&&(STL.cadConfig.sensors.midEncoderPort=+this.value)" style="width:100%;margin-top:2px;"/>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+@keyframes spin{to{transform:rotate(360deg);}}
+.stl-lib-item{padding:8px 12px;cursor:pointer;border-left:3px solid transparent;transition:all 0.1s;font-size:12px;color:var(--t2);border-bottom:1px solid var(--b1);}
+.stl-lib-item:hover{background:var(--s3);color:var(--t1);}
+.stl-lib-item.active{background:var(--s3);border-left-color:var(--gold);color:var(--gold);}
+.stl-lib-item-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+.stl-lib-item-del{float:right;color:var(--t3);font-size:11px;padding:0 3px;background:none;border:none;cursor:pointer;}
+.stl-lib-item-del:hover{color:#ff7b77;}
+</style>
+<!-- ─── TOAST RACK ─── -->
+<div id="toastRack"></div>
+
+<!-- ─── PROS INSTALL BANNER ─── -->
+<div id="prosInstallBanner" style="display:none;position:fixed;bottom:18px;right:18px;z-index:9999;background:var(--s3);border:1px solid var(--b2);border-radius:10px;padding:12px 16px;max-width:360px;box-shadow:0 8px 28px rgba(0,0,0,0.5);font-size:12px;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span id="prosInstallIcon" style="font-size:16px;">⏳</span>
+    <div style="flex:1;">
+      <div style="font-family:var(--fd);font-weight:700;font-size:13px;color:var(--t1);margin-bottom:2px;" id="prosInstallTitle">Checking PROS CLI…</div>
+      <div style="color:var(--t3);font-size:11px;line-height:1.5;" id="prosInstallMsg"></div>
+    </div>
+    <button onclick="document.getElementById('prosInstallBanner').style.display='none'" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:16px;padding:0;line-height:1;">×</button>
+  </div>
+</div>
+
+<!-- ─── EXIT CONFIRM ─── -->
+<div id="xBg" onclick="if(event.target===this)xClose()">
+  <div id="xBox">
+    <h3>Go to Home?</h3>
+    <p>Your work is saved automatically.<br>You can return anytime.</p>
+    <div class="xbtns">
+      <button class="btn-o" onclick="xClose()">Stay Here</button>
+      <button class="btn-g" onclick="xConfirm()">Go Home</button>
+    </div>
+  </div>
+</div>
+
+  <style>
+  /* ─── SIMULATOR SUBTABS ─── */
+  .sim-subtab{background:none;border:none;border-bottom:2px solid transparent;color:var(--t3);font-size:12px;font-family:var(--fd);font-weight:700;letter-spacing:0.06em;padding:0 18px;cursor:pointer;height:100%;transition:color .15s,border-color .15s;margin-bottom:-1px;}
+  .sim-subtab:hover{color:var(--t1);}
+  .sim-subtab.active{color:var(--t1);border-bottom-color:var(--gold);}
+  /* ─── IDE FILE TREE ─── */
+  .ide-tree-row{border-radius:4px;margin:1px 4px;}
+  </style>
+
+  <!-- ─── SIMULATOR PAGE ─── -->
+  <!-- ─── CODE IDE PAGE ─── -->
+  <div id="idePage" style="position:fixed;inset:0;background:var(--s0);z-index:170;display:none;flex-direction:column;overflow:hidden;">
+
+    <!-- Topbar -->
+    <div style="background:var(--s2);border-bottom:1px solid var(--b1);height:50px;display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0;">
+      <button class="btn-o" onclick="closeIDE()" style="font-size:12px;">← Home</button>
+      <div class="sep"></div>
+      <div style="font-family:var(--fd);font-weight:900;font-size:18px;">NEX<em style="color:var(--gold);">US</em> <span style="font-size:13px;font-weight:400;color:var(--t2);">Code IDE</span></div>
+      <div class="sep"></div>
+      <button class="btn-g" style="font-size:11px;padding:5px 12px;" onclick="ideShowNewProject()">+ New Project</button>
+      <button class="btn-o" style="font-size:11px;padding:5px 12px;" onclick="ideOpenProject()">📂 Open</button>
+      <div class="sep"></div>
+      <button class="btn-o" style="font-size:11px;padding:5px 12px;" onclick="ideBuild()">🔨 Build</button>
+      <button class="btn-o" style="font-size:11px;padding:5px 12px;" onclick="ideUpload()">⬆ Upload</button>
+      <button class="btn-g" style="font-size:11px;padding:5px 12px;" onclick="ideBuildUpload()">🚀 Build + Upload</button>
+      <div class="sep"></div>
+      <button class="btn-o" style="font-size:11px;padding:5px 12px;" onclick="ideInstallLemLib()">📦 Install LemLib</button>
+      <div class="sep"></div>
+      <button class="btn-o" style="font-size:11px;padding:5px 12px;" onclick="ideShowDrive()">☁ Drive</button>
+      <button class="btn-o" style="font-size:11px;padding:5px 12px;" onclick="ideShowSettings()">⚙ Settings</button>
+      <div style="flex:1;"></div>
+      <span style="font-size:11px;color:var(--t3);">PROS:</span>
+      <span id="ideProsStatus" style="font-size:11px;color:var(--t3);">Checking…</span>
+      <span style="font-size:11px;color:var(--t3);margin-left:10px;">GCC:</span>
+      <span id="ideToolchainStatus" style="font-size:11px;color:var(--t3);">Checking…</span>
+    </div>
+
+    <!-- IDE body -->
+    <div style="flex:1;display:flex;overflow:hidden;">
+
+      <!-- File tree -->
+      <div id="ideFileTree" style="width:210px;background:var(--s1);border-right:1px solid var(--b1);overflow-y:auto;flex-shrink:0;padding-top:4px;"></div>
+
+      <!-- Editor area -->
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--s0);">
+
+        <!-- Open-file tab bar -->
+        <div id="ideTabBar" style="display:flex;background:var(--s1);border-bottom:1px solid var(--b1);overflow-x:auto;flex-shrink:0;min-height:34px;scrollbar-width:none;"></div>
+
+        <!-- Editor mount + welcome screen -->
+        <div style="flex:1;position:relative;overflow:hidden;">
+          <div id="ideWelcome" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px;color:var(--t3);">
+            <div style="font-size:52px;opacity:0.15;font-family:var(--fm);">{ }</div>
+            <div style="font-family:var(--fd);font-size:22px;font-weight:900;color:var(--t2);">Nexus Code IDE</div>
+            <div style="font-size:13px;">Open a file from the project tree, or start a new project.</div>
+            <div style="display:flex;gap:10px;margin-top:4px;">
+              <button class="btn-g" onclick="ideShowNewProject()">+ New Project</button>
+              <button class="btn-o" onclick="ideOpenProject()">📂 Open Project</button>
+            </div>
+          </div>
+          <div id="ideEditorMount" style="display:none;position:absolute;inset:0;"></div>
+        </div>
+
+        <!-- Output panel -->
+        <div id="ideOutputPanel" style="height:180px;background:var(--s1);border-top:1px solid var(--b1);display:flex;flex-direction:column;flex-shrink:0;transition:height 0.15s;">
+          <div style="display:flex;align-items:center;padding:0 12px;height:32px;border-bottom:1px solid var(--b1);gap:8px;flex-shrink:0;">
+            <span style="font-size:10px;font-weight:700;color:var(--t3);font-family:var(--fd);letter-spacing:0.12em;">OUTPUT</span>
+            <div style="flex:1;"></div>
+            <button class="btn-o" style="font-size:10px;padding:2px 8px;" onclick="ideClearOutput()">Clear</button>
+            <button id="ideOutputToggleBtn" class="btn-o" style="font-size:10px;padding:2px 8px;" onclick="ideToggleOutput()">▼ Output</button>
+          </div>
+          <div id="ideOutputContent" style="flex:1;overflow-y:auto;padding:8px 14px;font-family:var(--fm);font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-all;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="simPage" style="position:fixed;inset:0;background:var(--s0);z-index:170;display:none;flex-direction:column;overflow:hidden;">
+  
+    <!-- Top bar -->
+    <div style="background:var(--s2);border-bottom:1px solid var(--b1);height:50px;display:flex;align-items:center;padding:0 14px;gap:9px;flex-shrink:0;">
+      <button class="btn-o" onclick="xPrompt(closeSimulator)" style="font-size:12px;">← Home</button>
+      <div class="sep"></div>
+      <div style="font-family:var(--fd);font-weight:900;font-size:18px;">NEX<em style="color:var(--gold);">US</em> <span style="font-size:13px;font-weight:400;color:var(--t2);">Simulator</span></div>
+      <div class="sep"></div>
+
+      <!-- Mode buttons -->
+      <button id="simMode_driver" class="btn-o sim-mode-btn active" onclick="simSetMode('driver')">Driver</button>
+      <button id="simMode_auton"  class="btn-o sim-mode-btn" onclick="simSetMode('auton')">Autonomous</button>
+      <button id="simMode_pid"    class="btn-o sim-mode-btn" onclick="simSetMode('pid')">PID Tuner</button>
+
+      <div class="sep"></div>
+
+      <!-- Match controls — Start is gold/filled to be the clear primary action -->
+      <button id="simStartBtn" class="btn-g" onclick="simToggleMatch()" style="font-size:14px;padding:6px 16px;">▶ Start</button>
+      <button class="btn-o" onclick="simResetMatch()">↺ Reset</button>
+
+      <!-- Timer + period badge -->
+      <div id="simPeriodBadge" style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;padding:3px 8px;border-radius:4px;background:rgba(34,197,94,0.25);color:#22c55e;">AUTON</div>
+      <div id="simTimer" style="font-family:var(--fm);font-weight:700;font-size:18px;color:var(--t1);min-width:44px;">1:45</div>
+
+      <div style="flex:1;"></div>
+
+      <!-- Sidebar toggles -->
+      <button class="sb-tog" data-sb="simLeft" data-dir="l" onclick="toggleSb('simLeft')" title="Hide panel">◁</button>
+      <button class="sb-tog" data-sb="simRight" data-dir="r" onclick="toggleSb('simRight')" title="Hide panel" style="margin-right:4px;">▷</button>
+
+      <div class="sep"></div>
+
+      <!-- Tools -->
+      <button class="btn-o" onclick="simLoadConfig()">📂 Load Config</button>
+      <button class="btn-o" onclick="simPickFieldOBJ()" title="Load a field OBJ file">🗺 Field</button>
+      <button class="btn-o" onclick="simOpenAnnotation()">⚙ Annotate</button>
+      <button id="simSpecsBtn" class="btn-o" onclick="simToggleAnnotations()">🏷 Specs</button>
+      <button class="btn-o" onclick="simRunDiagnostics()">⚠ Validate</button>
+      <div class="sep"></div>
+      <button class="pg-fs" onclick="toggleFs()">⛶ Fullscreen</button>
+      <div class="sep"></div>
+      <button class="btn-o" onclick="openIDE()" style="font-size:12px;">{ } IDE</button>
+      <div class="sep"></div>
+      <div class="auth-area" style="display:flex;align-items:center;gap:7px;"></div>
+
+      <!-- Status -->
+      <span id="simStatus" style="font-size:11px;color:var(--t3);margin-left:2px;white-space:nowrap;">No config loaded</span>
+    </div>
+  
+
+    <!-- Body -->
+    <div id="tabPanelSim" style="display:flex;flex:1;overflow:hidden;">
+  
+      <!-- LEFT SIDEBAR — robot state + sensors -->
+      <div id="simLeft" class="sb" style="width:190px;background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0;">
+  
+        <!-- Robot state -->
+        <div style="padding:10px 12px;border-bottom:1px solid var(--b1);">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;">Robot State</div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">X</span><span class="sim-stat-val" id="simStatX">72.0"</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Y</span><span class="sim-stat-val" id="simStatY">72.0"</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Heading</span><span class="sim-stat-val" id="simStatH">0.0°</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Speed</span><span class="sim-stat-val" id="simStatSpd">0.0 in/s</span></div>
+        </div>
+  
+        <!-- Sensors -->
+        <div style="padding:10px 12px;border-bottom:1px solid var(--b1);">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;">Sensors</div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">IMU</span><span class="sim-stat-val" id="simSensorImu" style="color:var(--gold);">0.0°</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Odom X</span><span class="sim-stat-val" id="simSensorOdomX" style="color:var(--gold);">72.0"</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Odom Y</span><span class="sim-stat-val" id="simSensorOdomY" style="color:var(--gold);">72.0"</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Fwd enc</span><span class="sim-stat-val" id="simSensorEnc" style="color:var(--gold);">0</span></div>
+        </div>
+  
+        <!-- Controls hint -->
+        <div style="padding:10px 12px;border-bottom:1px solid var(--b1);">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;">Controls</div>
+          <div style="font-size:11px;color:var(--t2);line-height:2;">
+            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">W A S D</span> Drive<br>
+            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">I</span> Intake<br>
+            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">P</span> Piston 1<br>
+            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">↕ scroll</span> Zoom<br>
+            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">RMB drag</span> Pan
+          </div>
+        </div>
+  
+        <!-- PID panel (shown in PID mode) -->
+        <div id="simPidPanel" style="display:none;padding:10px 12px;border-bottom:1px solid var(--b1);">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:8px;">PID Tuner</div>
+          <div class="sim-pid-row">
+            <span class="sim-pid-lbl">kP</span>
+            <input type="range" id="simKp" min="0" max="8" step="0.1" value="1.5" oninput="simUpdatePID()" style="flex:1;">
+            <span class="sim-pid-val" id="simKpVal">1.50</span>
+          </div>
+          <div class="sim-pid-row">
+            <span class="sim-pid-lbl">kI</span>
+            <input type="range" id="simKi" min="0" max="2" step="0.01" value="0.01" oninput="simUpdatePID()" style="flex:1;">
+            <span class="sim-pid-val" id="simKiVal">0.01</span>
+          </div>
+          <div class="sim-pid-row">
+            <span class="sim-pid-lbl">kD</span>
+            <input type="range" id="simKd" min="0" max="5" step="0.1" value="0.8" oninput="simUpdatePID()" style="flex:1;">
+            <span class="sim-pid-val" id="simKdVal">0.80</span>
+          </div>
+          <canvas id="simPidCanvas" style="width:100%;height:60px;display:block;margin-top:6px;border-radius:4px;background:var(--s3);"></canvas>
+          <div id="simPidStatus" style="font-size:10px;color:var(--t2);margin-top:4px;">Awaiting input…</div>
+          <div style="margin-top:8px;">
+            <div style="font-size:11px;color:var(--t3);margin-bottom:3px;">Target heading (°)</div>
+            <div style="display:flex;gap:5px;align-items:center;">
+              <input type="number" id="simPidTarget" value="90" min="-360" max="360"
+                style="width:60px;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:3px 6px;border-radius:4px;outline:none;"
+                oninput="simSetPIDTarget()"/>
+              <button class="btn-o" style="font-size:11px;padding:3px 8px;" onclick="simSetPIDTarget()">Set</button>
+            </div>
+          </div>
+          <button class="btn-g" style="width:100%;margin-top:10px;font-size:11px;" onclick="pidSendToIDE()">→ Send to IDE</button>
+        </div>
+  
+        <!-- Autonomous panel -->
+        <div id="simAutonPanel" style="display:none;padding:10px 12px;">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;">Autonomous</div>
+          <div style="font-size:11px;color:var(--t2);margin-bottom:8px;line-height:1.6;">Press ▶ Start to run the demo routine. Full scripting coming soon.</div>
+          <button class="btn-o" style="width:100%;font-size:11px;" onclick="simRunAuton()">▶ Run Routine</button>
+        </div>
+      </div>
+  
+      <!-- CENTER — 3D viewport -->
+      <div style="flex:1;position:relative;background:#08080b;" id="simViewport">
+        <canvas id="simCanvas" style="display:block;width:100%;height:100%;" tabindex="0"></canvas>
+
+        <!-- Loading overlay (shown while field/robot OBJs are parsing) -->
+        <div id="simLoading" style="display:none;position:absolute;inset:0;background:rgba(8,8,11,0.82);align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--t1);z-index:10;">
+          <div style="width:38px;height:38px;border:3px solid var(--s5);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+          <span style="font-size:13px;font-family:var(--fd);" id="simLoadingMsg">Loading…</span>
+        </div>
+  
+
+
+        <!-- Viewport hint -->
+        <div style="position:absolute;bottom:10px;right:12px;font-size:11px;color:var(--t3);pointer-events:none;text-align:right;line-height:1.8;">
+          WASD — drive &nbsp;·&nbsp; R/F — intake &nbsp;·&nbsp; Space — pistons<br>
+          Left drag — orbit &nbsp;·&nbsp; Right drag — pan &nbsp;·&nbsp; Scroll — zoom
+        </div>
+      </div>
+  
+      <!-- RIGHT SIDEBAR — config + odom -->
+      <div id="simRight" class="sb" style="width:210px;background:var(--s1);border-left:1px solid var(--b1);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0;">
+  
+        <!-- Robot config panel -->
+        <div style="padding:10px 12px;border-bottom:1px solid var(--b1);">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;">Robot Config</div>
+          <div id="simConfigContent" style="font-size:12px;color:var(--t2);">No config loaded — click 📂 Load Config</div>
+        </div>
+  
+        <!-- Odometry config -->
+        <div style="padding:10px 12px;">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;">Odometry</div>
+          <div id="simOdomConfig"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── NEW PROJECT MODAL ─── -->
+  <div id="ideNewProjectModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:300;align-items:center;justify-content:center;">
+    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:14px;width:460px;max-width:95vw;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+      <div style="padding:22px 26px 0;">
+        <div style="font-family:var(--fd);font-weight:900;font-size:20px;margin-bottom:4px;">New PROS Project</div>
+        <div style="font-size:12px;color:var(--t3);margin-bottom:20px;">Projects are saved in Nexus's data folder. Install PROS CLI to build and upload.</div>
+      </div>
+      <div style="padding:0 26px 24px;display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;">Project Name</div>
+          <input id="ideNewProjName" type="text" placeholder="my_robot" maxlength="64"
+            style="width:100%;box-sizing:border-box;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:14px;padding:9px 12px;border-radius:7px;outline:none;font-family:var(--fm);"
+            onkeydown="if(event.key==='Enter')ideCreateProject()">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;">Library Template</div>
+          <select id="ideNewProjLib" style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:13px;padding:9px 12px;border-radius:7px;outline:none;">
+            <option value="blank">Blank PROS</option>
+            <option value="lemlib" selected>LemLib (recommended)</option>
+            <option value="okapilib">OkapiLib</option>
+            <option value="ez-template">EZ-Template</option>
+          </select>
+        </div>
+        <div style="font-size:11px;color:var(--t3);background:var(--s3);padding:10px 12px;border-radius:7px;line-height:1.6;">
+          Library headers are scaffolded as stubs. After creating the project, use the PROS CLI (<code style="font-family:var(--fm);">pros conduct apply &lt;lib&gt;</code>) to install the actual library files.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
+          <button class="btn-o" onclick="ideHideNewProject()">Cancel</button>
+          <button class="btn-g" onclick="ideCreateProject()">Create Project →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── ANNOTATION MODAL ─── -->
+  <div id="simAnnotationModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:200;display:none;align-items:center;justify-content:center;">
+    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:14px;width:560px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+
+      <!-- Header -->
+      <div style="padding:22px 26px 0;flex-shrink:0;">
+        <div style="font-family:var(--fd);font-weight:900;font-size:20px;margin-bottom:4px;">Robot Config</div>
+        <div style="font-size:12px;color:var(--t3);margin-bottom:16px;">Define your robot's drivetrain, mechanisms, and gear train. Mesh names must match OBJ groups exactly.</div>
+      </div>
+
+      <!-- Scrollable body -->
+      <div style="padding:0 26px 16px;overflow-y:auto;flex:1;">
+
+        <!-- Drivetrain -->
+        <div style="margin-bottom:16px;">
+          <div style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;color:var(--t2);text-transform:uppercase;margin-bottom:8px;">Drivetrain</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--t3);">Type</label>
+              <select id="annDriveType" style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:5px 7px;border-radius:4px;margin-top:3px;">
+                <option value="tank">Tank</option>
+                <option value="x-drive">X-Drive</option>
+                <option value="mecanum">Mecanum</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--t3);">Wheel Ø (in)</label>
+              <input type="number" id="annWheelDia" value="3.25" step="0.25" style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:5px 7px;border-radius:4px;margin-top:3px;outline:none;"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--t3);">Cartridge</label>
+              <select id="annCartridge" style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:5px 7px;border-radius:4px;margin-top:3px;">
+                <option value="100">100 rpm</option>
+                <option value="200" selected>200 rpm</option>
+                <option value="600">600 rpm</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--t3);">Ext. Gear Ratio</label>
+              <input type="number" id="annExtRatio" value="1.0" step="0.05" min="0.1" style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:5px 7px;border-radius:4px;margin-top:3px;outline:none;" title="Gear/sprocket ratio between motor and wheel (e.g. 0.6 for 3:5 speed)"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--t3);">Track Width (in)</label>
+              <input type="number" id="annTrackWidth" value="12" style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:5px 7px;border-radius:4px;margin-top:3px;outline:none;"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--t3);">Robot Width (in)</label>
+              <input type="number" id="annRobotWidth" value="15" style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:5px 7px;border-radius:4px;margin-top:3px;outline:none;"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--t3);">Robot Length (in)</label>
+              <input type="number" id="annRobotLength" value="15" style="width:100%;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:5px 7px;border-radius:4px;margin-top:3px;outline:none;"/>
+            </div>
+          </div>
+        </div>
+
+        <!-- Motors -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;color:var(--t2);text-transform:uppercase;">Motors</div>
+            <button class="btn-o" style="font-size:11px;padding:3px 8px;" onclick="annAddMotor()">+ Add</button>
+          </div>
+          <div style="font-size:10px;color:var(--t3);margin-bottom:6px;">Row 1: id, mesh name &nbsp;·&nbsp; Row 2: role, cartridge, ext ratio, spin axis, reversed</div>
+          <div id="annMotorList" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+
+        <!-- Mechanisms -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;color:var(--t2);text-transform:uppercase;">Mechanisms</div>
+            <button class="btn-o" style="font-size:11px;padding:3px 8px;" onclick="annAddMechanism()">+ Add</button>
+          </div>
+          <div style="font-size:10px;color:var(--t3);margin-bottom:6px;">Group motors by subsystem. Key/Rev key: single character to hold for forward/reverse.</div>
+          <div id="annMechList" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+
+        <!-- Pistons -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;color:var(--t2);text-transform:uppercase;">Pistons</div>
+            <button class="btn-o" style="font-size:11px;padding:3px 8px;" onclick="annAddPiston()">+ Add</button>
+          </div>
+          <div id="annPistonList" style="display:flex;flex-direction:column;gap:5px;"></div>
+        </div>
+
+        <!-- Gears -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;color:var(--t2);text-transform:uppercase;">Gears</div>
+            <button class="btn-o" style="font-size:11px;padding:3px 8px;" onclick="annAddGear()">+ Add</button>
+          </div>
+          <div style="font-size:10px;color:var(--t3);margin-bottom:6px;">Teeth / Input teeth: outputRPM = motorRPM × (inputT ÷ ownT). Meshing gears reverse direction.</div>
+          <div id="annGearList" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+
+        <!-- Sprockets -->
+        <div style="margin-bottom:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;color:var(--t2);text-transform:uppercase;">Sprockets / Chain</div>
+            <button class="btn-o" style="font-size:11px;padding:3px 8px;" onclick="annAddSprocket()">+ Add</button>
+          </div>
+          <div style="font-size:10px;color:var(--t3);margin-bottom:6px;">Same direction as driver. outputRPM = inputRPM × (driverT ÷ ownT). Link to motor id or another sprocket id.</div>
+          <div id="annSprocketList" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 26px;border-top:1px solid var(--b1);flex-shrink:0;">
+        <button onclick="simCloseAnnotation()" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-family:var(--fb);font-size:13px;padding:7px 16px;border-radius:var(--r);cursor:pointer;">Cancel</button>
+        <button onclick="annSave()" class="btn-g">Save Config</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- ─── SIMULATOR STYLES ─── -->
+  <style>
+/* ─── TOAST ─── */
+#toastRack{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:9990;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;}
+.toast{background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-family:var(--fb);font-size:13px;padding:9px 18px;border-radius:20px;white-space:nowrap;animation:tIn 0.2s ease;box-shadow:0 6px 20px rgba(0,0,0,0.4);}
+.toast.ok{border-color:rgba(34,197,94,0.4);color:#22c55e;}.toast.err{border-color:rgba(232,48,42,0.35);color:#ff7b77;}
+@keyframes tIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* ─── SIDEBAR COLLAPSE ─── */
+.sb{transition:width 0.2s ease;}
+.sb.closed{width:0!important;min-width:0!important;overflow:hidden!important;border-width:0!important;}
+.sb-tog{background:transparent;border:1px solid var(--b1);color:var(--t3);border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.12s;padding:0;line-height:1;}
+.sb-tog:hover{background:var(--s3);color:var(--t1);border-color:var(--b2);}
+
+/* ─── FULLSCREEN BUTTON ─── */
+.pg-fs{background:transparent;border:1px solid var(--b1);color:var(--t3);font-size:11px;padding:4px 9px;border-radius:var(--r);cursor:pointer;transition:all 0.12s;white-space:nowrap;flex-shrink:0;}
+.pg-fs:hover{border-color:var(--b3);color:var(--t1);}
+
+/* ─── EXIT CONFIRM ─── */
+#xBg{position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:9995;display:none;align-items:center;justify-content:center;}
+#xBg.show{display:flex;}
+#xBox{background:var(--s2);border:1px solid var(--b2);border-radius:14px;padding:28px 30px;width:300px;text-align:center;box-shadow:0 20px 48px rgba(0,0,0,0.5);}
+#xBox h3{font-family:var(--fd);font-size:20px;font-weight:900;margin-bottom:6px;}
+#xBox p{font-size:12px;color:var(--t3);margin-bottom:22px;line-height:1.6;}
+#xBox .xbtns{display:flex;gap:10px;justify-content:center;}
+
+  .sim-mode-btn.active { background: var(--blue); color: #E6F1FB; border-color: var(--blue); }
+    .sim-stat-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+    .sim-stat-lbl { font-size:11px; color:var(--t3); }
+    .sim-stat-val { font-size:12px; font-weight:600; font-family:var(--fm); color:var(--t1); }
+    .sim-pid-row  { display:flex; align-items:center; gap:5px; margin-bottom:6px; }
+    .sim-pid-lbl  { font-size:12px; color:var(--t2); width:18px; }
+    .sim-pid-val  { font-size:10px; font-family:var(--fm); color:var(--t1); min-width:30px; text-align:right; }
+    .sim-config-section { margin-bottom:10px; }
+    .sim-config-label   { font-size:10px; font-family:var(--fd); font-weight:700; letter-spacing:0.1em; color:var(--t3); text-transform:uppercase; margin-bottom:5px; }
+    .sim-config-row     { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--t2); margin-bottom:4px; gap:6px; }
+    .sim-piston-btn     { font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid var(--b2); background:transparent; color:var(--t1); cursor:pointer; }
+    .sim-piston-btn:hover { background:var(--s4); }
+    .ann-motor-card  { background:var(--s3); border:1px solid var(--b1); border-radius:6px; padding:6px 8px; display:flex; flex-direction:column; gap:5px; }
+    .ann-motor-row1  { display:flex; gap:5px; align-items:center; }
+    .ann-motor-row2  { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
+    .ann-piston-row  { display:grid; grid-template-columns:80px 1fr 60px 28px; gap:5px; align-items:center; }
+    .ann-input { background:var(--s2); border:1px solid var(--b2); color:var(--t1); font-size:11px; padding:3px 6px; border-radius:4px; outline:none; width:100%; }
+    .ann-input:focus { border-color:var(--gold); }
+    .ann-del { background:transparent; border:none; color:var(--t3); font-size:14px; cursor:pointer; padding:0; flex-shrink:0; }
+    .ann-del:hover { color:#ff7b77; }
+  </style>
+  <!-- ─── IDE SETTINGS MODAL ─── -->
+  <div id="ideSettingsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:400;align-items:center;justify-content:center;">
+    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:14px;width:520px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.55);">
+      <div style="padding:22px 26px 16px;flex-shrink:0;border-bottom:1px solid var(--b1);">
+        <div style="font-family:var(--fd);font-weight:900;font-size:20px;">⚙ IDE Settings</div>
+      </div>
+      <div style="padding:20px 26px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:22px;">
+
+        <!-- PROS Configuration -->
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--gold);text-transform:uppercase;margin-bottom:12px;font-family:var(--fd);">PROS Configuration</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div>
+              <div style="font-size:11px;color:var(--t3);margin-bottom:5px;">PROS CLI Executable <span style="color:var(--t3);font-size:10px;">(pros.exe, pros.cmd, or full path)</span></div>
+              <div style="display:flex;gap:6px;">
+                <input id="ideSetProsPath" type="text" placeholder="Leave blank to use system PATH"
+                  style="flex:1;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:7px 10px;border-radius:6px;outline:none;font-family:var(--fm);">
+                <button class="btn-o" style="font-size:11px;white-space:nowrap;" onclick="ideBrowseProsExe()">Browse…</button>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--t3);margin-bottom:5px;">Toolchain bin/ Directory <span style="color:var(--t3);font-size:10px;">(optional — folder containing arm-none-eabi-gcc, make)</span></div>
+              <div style="display:flex;gap:6px;">
+                <input id="ideSetToolchainPath" type="text" placeholder="e.g. C:\gcc-arm\bin"
+                  style="flex:1;background:var(--s3);border:1px solid var(--b2);color:var(--t1);font-size:12px;padding:7px 10px;border-radius:6px;outline:none;font-family:var(--fm);">
+                <button class="btn-o" style="font-size:11px;white-space:nowrap;" onclick="ideBrowseToolchainDir()">Browse…</button>
+              </div>
+            </div>
+            <button class="btn-o" style="font-size:11px;align-self:flex-start;" onclick="ideTestProsPath()">▶ Test Connection</button>
+          </div>
+        </div>
+
+        <!-- Google Drive -->
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--gold);text-transform:uppercase;margin-bottom:12px;font-family:var(--fd);">Google Drive Sync</div>
+          <div id="ideSettingsDriveArea" style="display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
+      </div>
+      <div style="padding:16px 26px;border-top:1px solid var(--b1);display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+        <button class="btn-o" onclick="ideHideSettings()">Cancel</button>
+        <button class="btn-g" onclick="ideSaveSettings()">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── DRIVE PROJECTS MODAL ─── -->
+  <div id="ideDriveModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:400;align-items:center;justify-content:center;">
+    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:14px;width:500px;max-width:96vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.55);">
+      <div style="padding:18px 22px 14px;flex-shrink:0;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px;">
+        <div style="font-family:var(--fd);font-weight:900;font-size:18px;flex:1;">☁ Drive Projects</div>
+        <button class="btn-g" style="font-size:11px;" onclick="drivePushProject();ideHideDrive();">⬆ Push Current Project</button>
+        <button class="btn-o" style="font-size:11px;" onclick="ideRefreshDriveList()">↺</button>
+        <button class="btn-o" style="font-size:11px;" onclick="ideHideDrive()">✕ Close</button>
+      </div>
+      <div style="font-size:11px;color:var(--t3);padding:10px 22px 8px;">Projects saved to <strong style="color:var(--t2);">Nexus Projects/</strong> in your Google Drive. Pull to download to this device.</div>
+      <div id="ideDriveProjectList" style="flex:1;overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <script src="simulator.js"></script>
+  <script src="code.js"></script>
+
+<script>
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+function showToast(msg, type, ms) {
+  ms = ms || 2800;
+  const rack = document.getElementById('toastRack');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  rack.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity 0.28s';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, ms);
+}
+
+// ─── FULLSCREEN ──────────────────────────────────────────────────────────────
+function toggleFs() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  const fs = !!document.fullscreenElement;
+  document.querySelectorAll('.pg-fs').forEach(b => {
+    b.textContent = fs ? '⊡ Exit Full' : '⛶ Fullscreen';
+  });
+});
+
+// ─── SIDEBAR TOGGLE ──────────────────────────────────────────────────────────
+function toggleSb(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const closing = !el.classList.contains('closed');
+  el.classList.toggle('closed', closing);
+  // flip any toggle buttons that reference this sidebar
+  document.querySelectorAll('[data-sb="' + id + '"]').forEach(btn => {
+    btn.title = closing ? 'Show panel' : 'Hide panel';
+    // swap the arrow direction based on whether it's a left or right sidebar
+    const isRight = btn.dataset.dir === 'r';
+    btn.textContent = closing ? (isRight ? '◁' : '▷') : (isRight ? '▷' : '◁');
+  });
+}
+
+// ─── PROS STATUS BANNER ──────────────────────────────────────────────────────
+if (window.electronAPI?.onProsStatus) {
+  window.electronAPI.onProsStatus(({ type, message }) => {
+    const banner  = document.getElementById('prosInstallBanner');
+    const title   = document.getElementById('prosInstallTitle');
+    const msg     = document.getElementById('prosInstallMsg');
+    const icon    = document.getElementById('prosInstallIcon');
+    if (!banner) return;
+
+    const cfg = {
+      checking:   { show: true,  icon: '⏳', label: 'Checking PROS CLI…',      color: 'var(--t2)'  },
+      ok:         { show: false, icon: '✅', label: 'PROS CLI ready',            color: '#4ade80'    },
+      installing: { show: true,  icon: '⬇',  label: 'Installing PROS CLI…',     color: 'var(--gold)'},
+      progress:   { show: true,  icon: '⬇',  label: 'Installing PROS CLI…',     color: 'var(--gold)'},
+      success:    { show: true,  icon: '✅', label: 'PROS CLI installed!',       color: '#4ade80'    },
+      error:      { show: true,  icon: '⚠',  label: 'PROS CLI install issue',   color: '#f87171'    },
+    };
+
+    const c = cfg[type] || cfg.error;
+    banner.style.display = c.show ? 'block' : 'none';
+    if (icon)  icon.textContent   = c.icon;
+    if (title) { title.textContent = c.label; title.style.color = c.color; }
+    if (msg && type !== 'checking') msg.textContent = message;
+
+    // Auto-hide success after 4 s
+    if (type === 'success') setTimeout(() => { banner.style.display = 'none'; }, 4000);
+  });
+}
+
+// ─── EXIT CONFIRM ────────────────────────────────────────────────────────────
+let _xFn = null;
+function xPrompt(fn) { _xFn = fn; document.getElementById('xBg').classList.add('show'); }
+function xClose()    { document.getElementById('xBg').classList.remove('show'); _xFn = null; }
+function xConfirm()  { const fn = _xFn; xClose(); if (fn) fn(); }
+</script>
+<div style="position:fixed;bottom:6px;width:100%;text-align:center;font-size:11px;color:#555;pointer-events:none;z-index:9999;">
+  Copyright 2026 &mdash; Created by Kailash Kannan &mdash; 8780E
+</div>
+</body>
+</html>
