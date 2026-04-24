@@ -905,3 +905,33 @@ ipcMain.handle('ide:mkdir', async (_event, dirPath) => {
   try { fs.mkdirSync(dirPath, { recursive: true }); return true; }
   catch { return false; }
 });
+
+// ─── TELEMETRY ────────────────────────────────────────────────────────────────
+
+const SESSIONS_DIR = path.join(app.getPath('userData'), 'sessions');
+fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+
+ipcMain.handle('sim:saveTelemetry', async (_event, session) => {
+  try {
+    const fname = `session_${session.id}_${session.mode}.json`;
+    fs.writeFileSync(path.join(SESSIONS_DIR, fname), JSON.stringify(session), 'utf8');
+    return true;
+  } catch { return false; }
+});
+
+ipcMain.handle('sim:listSessions', async () => {
+  try {
+    return fs.readdirSync(SESSIONS_DIR)
+      .filter(f => f.endsWith('.json'))
+      .map(f => {
+        const raw = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, f), 'utf8'));
+        return { file: f, id: raw.id, date: raw.date, mode: raw.mode, frameCount: raw.frames?.length || 0 };
+      })
+      .sort((a, b) => b.id - a.id);
+  } catch { return []; }
+});
+
+ipcMain.handle('sim:loadSession', async (_event, file) => {
+  try { return JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, file), 'utf8')); }
+  catch { return null; }
+});

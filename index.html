@@ -996,16 +996,16 @@ input[type=range]{width:100%;accent-color:var(--gold);}
       <div class="sep"></div>
 
       <!-- Mode buttons -->
-      <button id="simMode_driver" class="btn-o sim-mode-btn active" onclick="simSetMode('driver')">Driver</button>
-      <button id="simMode_auton"  class="btn-o sim-mode-btn" onclick="simSetMode('auton')">Autonomous</button>
-      <button id="simMode_pid"    class="btn-o sim-mode-btn" onclick="simSetMode('pid')">PID Tuner</button>
+      <button id="simMode_freeRoam"   class="btn-o sim-mode-btn" onclick="simSetMode('freeRoam')">Free Roam</button>
+      <button id="simMode_driver"     class="btn-o sim-mode-btn active" onclick="simSetMode('driver')">Competition</button>
+      <button id="simMode_auton"      class="btn-o sim-mode-btn" onclick="simSetMode('auton')">Autonomous</button>
+      <button id="simMode_pid"        class="btn-o sim-mode-btn" onclick="simSetMode('pid')">PID Tuner</button>
 
       <div class="sep"></div>
 
       <!-- Match controls — Start is gold/filled to be the clear primary action -->
       <button id="simStartBtn" class="btn-g" onclick="simToggleMatch()" style="font-size:14px;padding:6px 16px;">▶ Start</button>
       <button class="btn-o" onclick="simResetMatch()">↺ Reset</button>
-
       <!-- Timer + period badge -->
       <div id="simPeriodBadge" style="font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:0.1em;padding:3px 8px;border-radius:4px;background:rgba(34,197,94,0.25);color:#22c55e;">AUTON</div>
       <div id="simTimer" style="font-family:var(--fm);font-weight:700;font-size:18px;color:var(--t1);min-width:44px;">1:45</div>
@@ -1024,6 +1024,7 @@ input[type=range]{width:100%;accent-color:var(--gold);}
       <button class="btn-o" onclick="simOpenAnnotation()">⚙ Annotate</button>
       <button id="simSpecsBtn" class="btn-o" onclick="simToggleAnnotations()">🏷 Specs</button>
       <button class="btn-o" onclick="simRunDiagnostics()">⚠ Validate</button>
+      <button class="btn-o" onclick="simOpenAnalytics()" title="View session replays and coaching analytics">📊 Analytics</button>
       <div class="sep"></div>
       <button class="pg-fs" onclick="toggleFs()">⛶ Fullscreen</button>
       <div class="sep"></div>
@@ -1049,6 +1050,10 @@ input[type=range]{width:100%;accent-color:var(--gold);}
           <div class="sim-stat-row"><span class="sim-stat-lbl">Y</span><span class="sim-stat-val" id="simStatY">72.0"</span></div>
           <div class="sim-stat-row"><span class="sim-stat-lbl">Heading</span><span class="sim-stat-val" id="simStatH">0.0°</span></div>
           <div class="sim-stat-row"><span class="sim-stat-lbl">Speed</span><span class="sim-stat-val" id="simStatSpd">0.0 in/s</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Cargo</span><span class="sim-stat-val" id="simStatCargo">0/4</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">You</span><span class="sim-stat-val" id="simStatPScore">0</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Opp</span><span class="sim-stat-val" id="simStatOScore">0</span></div>
+          <div class="sim-stat-row"><span class="sim-stat-lbl">Climb</span><span class="sim-stat-val" id="simStatClimb">Ready</span></div>
         </div>
   
         <!-- Sensors -->
@@ -1065,7 +1070,9 @@ input[type=range]{width:100%;accent-color:var(--gold);}
           <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;">Controls</div>
           <div style="font-size:11px;color:var(--t2);line-height:2;">
             <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">W A S D</span> Drive<br>
-            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">I</span> Intake<br>
+            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">Z</span> Intake<br>
+            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">X</span> Shoot<br>
+            <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">C</span> Climb<br>
             <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">P</span> Piston 1<br>
             <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">↕ scroll</span> Zoom<br>
             <span style="font-family:var(--fm);background:var(--s4);padding:1px 5px;border-radius:3px;">RMB drag</span> Pan
@@ -1116,17 +1123,36 @@ input[type=range]{width:100%;accent-color:var(--gold);}
       <div style="flex:1;position:relative;background:#08080b;" id="simViewport">
         <canvas id="simCanvas" style="display:block;width:100%;height:100%;" tabindex="0"></canvas>
 
-        <!-- Loading overlay (shown while field/robot OBJs are parsing) -->
+        <!-- Loading overlay -->
         <div id="simLoading" style="display:none;position:absolute;inset:0;background:rgba(8,8,11,0.82);align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--t1);z-index:10;">
           <div style="width:38px;height:38px;border:3px solid var(--s5);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
           <span style="font-size:13px;font-family:var(--fd);" id="simLoadingMsg">Loading…</span>
         </div>
-  
 
+        <!-- Score HUD -->
+        <div style="position:absolute;top:0;left:0;right:0;pointer-events:none;display:flex;justify-content:center;z-index:5;">
+          <div style="display:flex;align-items:stretch;background:rgba(8,8,11,0.76);border-radius:0 0 14px 14px;border:1px solid rgba(255,255,255,0.07);border-top:none;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:10px;padding:7px 22px 8px;background:rgba(59,130,246,0.13);">
+              <span style="font-family:var(--fd);font-size:10px;font-weight:700;color:#6ab3ff;letter-spacing:0.12em;">YOU</span>
+              <span id="simHudPlayer" style="font-family:var(--fm);font-weight:900;font-size:30px;color:#fff;min-width:34px;text-align:right;line-height:1;">0</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5px 20px;border-left:1px solid rgba(255,255,255,0.07);border-right:1px solid rgba(255,255,255,0.07);">
+              <div id="simHudTimer" style="font-family:var(--fm);font-weight:900;font-size:26px;color:var(--gold);line-height:1;">1:45</div>
+              <div style="display:flex;align-items:center;gap:5px;margin-top:2px;">
+                <span id="simHudPeriod" style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:0.14em;color:var(--t3);text-transform:uppercase;">DRIVER</span>
+                <span id="simHudWave" style="display:none;font-family:var(--fd);font-size:9px;font-weight:700;color:rgba(251,191,36,0.55);"></span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:7px 22px 8px;background:rgba(239,68,68,0.13);">
+              <span id="simHudOpp" style="font-family:var(--fm);font-weight:900;font-size:30px;color:#fff;min-width:34px;text-align:left;line-height:1;">0</span>
+              <span style="font-family:var(--fd);font-size:10px;font-weight:700;color:#ff7b77;letter-spacing:0.12em;">OPP</span>
+            </div>
+          </div>
+        </div>
 
         <!-- Viewport hint -->
         <div style="position:absolute;bottom:10px;right:12px;font-size:11px;color:var(--t3);pointer-events:none;text-align:right;line-height:1.8;">
-          WASD — drive &nbsp;·&nbsp; R/F — intake &nbsp;·&nbsp; Space — pistons<br>
+          WASD — drive &nbsp;·&nbsp; Z — intake &nbsp;·&nbsp; X — shoot &nbsp;·&nbsp; C — climb<br>
           Left drag — orbit &nbsp;·&nbsp; Right drag — pan &nbsp;·&nbsp; Scroll — zoom
         </div>
       </div>
@@ -1148,6 +1174,72 @@ input[type=range]{width:100%;accent-color:var(--gold);}
       </div>
     </div>
 
+  </div>
+
+  <!-- ─── ANALYTICS PANEL ─── -->
+  <div id="simAnalyticsOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:210;align-items:flex-start;justify-content:center;padding:24px;">
+    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:14px;width:900px;max-width:98vw;max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.7);">
+
+      <!-- Header -->
+      <div style="padding:18px 22px 0;flex-shrink:0;display:flex;align-items:center;gap:12px;">
+        <div style="font-family:var(--fd);font-weight:900;font-size:19px;">📊 Driver Analytics</div>
+        <div style="font-size:12px;color:var(--t3);flex:1;">Replay any practice session and see where you can improve.</div>
+        <button class="btn-o" onclick="simCloseAnalytics()" style="font-size:13px;">✕ Close</button>
+      </div>
+
+      <!-- Body: split list + detail -->
+      <div style="display:flex;flex:1;overflow:hidden;gap:0;padding:14px 22px 20px;">
+
+        <!-- Session list -->
+        <div style="width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto;padding-right:14px;border-right:1px solid var(--b1);">
+          <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.13em;color:var(--t3);text-transform:uppercase;margin-bottom:2px;">Sessions</div>
+          <button class="btn-o" style="font-size:11px;padding:4px 8px;margin-bottom:4px;" onclick="simRefreshSessions()">↺ Refresh</button>
+          <div id="simSessionList" style="font-size:12px;color:var(--t3);">Loading…</div>
+        </div>
+
+        <!-- Detail: heatmap + stats -->
+        <div style="flex:1;display:flex;flex-direction:column;gap:12px;overflow-y:auto;padding-left:18px;">
+          <div id="simAnalyticsEmpty" style="color:var(--t3);font-size:13px;padding:40px 0;text-align:center;">Select a session on the left to view analytics.</div>
+
+          <!-- heatmap row -->
+          <div id="simAnalyticsDetail" style="display:none;flex-direction:column;gap:14px;">
+            <div style="display:flex;gap:14px;flex-wrap:wrap;">
+
+              <!-- Heatmap canvas -->
+              <div>
+                <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;">Field Coverage Heatmap</div>
+                <div style="position:relative;display:inline-block;border:1px solid var(--b2);border-radius:6px;overflow:hidden;">
+                  <canvas id="simHeatmapCanvas" width="240" height="240" style="display:block;"></canvas>
+                  <!-- legend -->
+                  <div style="position:absolute;bottom:4px;right:5px;display:flex;gap:3px;align-items:center;">
+                    <div style="width:40px;height:7px;background:linear-gradient(to right,#1a1a2e,#1e3a8a,#f59e0b,#ef4444);border-radius:2px;"></div>
+                    <span style="font-size:9px;color:rgba(255,255,255,0.6);">none → hot</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Stats grid -->
+              <div style="flex:1;min-width:180px;">
+                <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;">Match Stats</div>
+                <div id="simAnalyticsStats" style="display:flex;flex-direction:column;gap:5px;"></div>
+              </div>
+            </div>
+
+            <!-- Speed timeline canvas -->
+            <div>
+              <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;">Speed Timeline</div>
+              <canvas id="simSpeedCanvas" width="560" height="70" style="display:block;border-radius:5px;background:var(--s3);width:100%;max-width:560px;"></canvas>
+            </div>
+
+            <!-- Coaching tips -->
+            <div>
+              <div style="font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;">Coaching Notes</div>
+              <div id="simAnalyticsTips" style="display:flex;flex-direction:column;gap:3px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ─── NEW PROJECT MODAL ─── -->
@@ -1337,6 +1429,11 @@ input[type=range]{width:100%;accent-color:var(--gold);}
     .sim-config-row     { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--t2); margin-bottom:4px; gap:6px; }
     .sim-piston-btn     { font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid var(--b2); background:transparent; color:var(--t1); cursor:pointer; }
     .sim-piston-btn:hover { background:var(--s4); }
+    .sim-session-row    { padding:8px 10px; border-radius:6px; border:1px solid var(--b1); cursor:pointer; transition:background 0.1s; margin-bottom:5px; }
+    .sim-session-row:hover { background:var(--s3); }
+    .sim-session-row.active { border-color:var(--gold); background:rgba(251,191,36,0.08); }
+    .sim-an-stat        { display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:4px 0; border-bottom:1px solid var(--b1); color:var(--t2); }
+    .sim-an-stat span:last-child { font-weight:600; font-family:var(--fm); color:var(--t1); }
     .ann-motor-card  { background:var(--s3); border:1px solid var(--b1); border-radius:6px; padding:6px 8px; display:flex; flex-direction:column; gap:5px; }
     .ann-motor-row1  { display:flex; gap:5px; align-items:center; }
     .ann-motor-row2  { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }

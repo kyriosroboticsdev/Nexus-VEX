@@ -337,12 +337,21 @@ function exportXLSX(){
   XLSX.writeFile(wb,`VEXScout_${(S.ev?.name||'Event').replace(/[^a-zA-Z0-9_\-]/g,'_').substring(0,40)}.xlsx`);
   setSt('Downloaded .xlsx','live');
 }
-function exportSheets(){
+async function exportSheets(){
   if(!S.gid){alert('Download the .xlsx file, then import it into Google Sheets.');return;}
   const scope='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
-  const au=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(S.gid)}&redirect_uri=${encodeURIComponent(location.href)}&response_type=token&scope=${encodeURIComponent(scope)}`;
-  const aw=window.open(au,'gauth',`width=500,height=600,left=${(screen.width-500)/2},top=${(screen.height-600)/2}`);
-  const poll=setInterval(()=>{try{const h=aw?.location?.hash||'';if(h.includes('access_token')){const p=new URLSearchParams(h.slice(1));S.gat=p.get('access_token');clearInterval(poll);aw.close();doSync();}}catch{}if(aw?.closed)clearInterval(poll);},500);
+  const au=new URLSearchParams({client_id:S.gid,redirect_uri:'https://vexscout.vercel.app/',response_type:'token',scope,prompt:'select_account'});
+  const authUrl='https://accounts.google.com/o/oauth2/v2/auth?'+au.toString();
+  try{
+    const token=IS_ELECTRON&&window.electronAPI?.googleAuth
+      ?await window.electronAPI.googleAuth(authUrl)
+      :await new Promise((res,rej)=>{
+          const aw=window.open(authUrl,'gauth',`width=500,height=600,left=${(screen.width-500)/2},top=${(screen.height-600)/2}`);
+          const poll=setInterval(()=>{try{const h=aw?.location?.hash||'';if(h.includes('access_token')){const p=new URLSearchParams(h.slice(1));clearInterval(poll);aw.close();res(p.get('access_token'));}}catch{}if(aw?.closed){clearInterval(poll);rej(new Error('closed'));}},500);
+        });
+    S.gat=token;
+    doSync();
+  }catch(e){if(e.message!=='closed')setSt('Sheets auth failed: '+e.message,'idle');}
 }
 async function doSync(){
   setSt('Creating Google Sheet…','load');
@@ -2938,6 +2947,218 @@ function anClearRegion() {
   if (input) input.value = '';
   document.getElementById('anEventList').innerHTML = '';
   loadAnalysisData(true);
+}
+
+// ─── SIMULATOR ANALYTICS ──────────────────────────────────────────────────────
+
+async function simOpenAnalytics() {
+  const overlay = document.getElementById('simAnalyticsOverlay');
+  overlay.style.display = 'flex';
+  await simRefreshSessions();
+}
+
+function simCloseAnalytics() {
+  document.getElementById('simAnalyticsOverlay').style.display = 'none';
+}
+
+async function simRefreshSessions() {
+  const el = document.getElementById('simSessionList');
+  el.innerHTML = '<span style="color:var(--t3);font-size:11px;">Loading…</span>';
+  const sessions = await window.electronAPI?.simListSessions?.() || [];
+  if (!sessions.length) {
+    el.innerHTML = '<div style="color:var(--t3);font-size:11px;line-height:1.6;">No sessions yet.<br>Run a match in Driver or Auton mode to record data.</div>';
+    return;
+  }
+  el.innerHTML = sessions.map(s => {
+    const d = new Date(s.date);
+    const label = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const dur = s.frameCount ? `${Math.round(s.frameCount / 10)}s` : '?s';
+    return `<div class="sim-session-row" id="ssr_${CSS.escape(s.file)}" onclick="simSelectSession('${s.file.replace(/'/g, "\\'")}')">
+      <div style="font-size:11px;font-weight:700;color:var(--t1);">${(s.mode || 'driver').toUpperCase()} &nbsp;<span style="font-weight:400;color:var(--t3);">${dur}</span></div>
+      <div style="font-size:10px;color:var(--t3);margin-top:2px;">${label}</div>
+    </div>`;
+  }).join('');
+}
+
+let _simLastSessionFile = null;
+
+async function simSelectSession(file) {
+  _simLastSessionFile = file;
+  document.querySelectorAll('.sim-session-row').forEach(r => r.classList.remove('active'));
+  const row = document.getElementById('ssr_' + CSS.escape(file));
+  if (row) row.classList.add('active');
+
+  const session = await window.electronAPI?.simLoadSession?.(file);
+  if (!session) return;
+  simRenderSessionAnalytics(session);
+}
+
+function simRenderSessionAnalytics(session) {
+  document.getElementById('simAnalyticsEmpty').style.display = 'none';
+  const detail = document.getElementById('simAnalyticsDetail');
+  detail.style.display = 'flex';
+
+  const frames = session.frames || [];
+  if (!frames.length) {
+    detail.style.display = 'none';
+    document.getElementById('simAnalyticsEmpty').style.display = '';
+    document.getElementById('simAnalyticsEmpty').textContent = 'No frame data in this session.';
+    return;
+  }
+
+  const GRID = 24;
+  const FIELD = 144;
+  const heatmap = new Array(GRID * GRID).fill(0);
+
+  frames.forEach(f => {
+    const gx = Math.min(GRID - 1, Math.floor((f.p.x / FIELD) * GRID));
+    const gy = Math.min(GRID - 1, Math.floor((f.p.y / FIELD) * GRID));
+    heatmap[gy * GRID + gx]++;
+  });
+
+  const maxH = Math.max(...heatmap, 1);
+  const canvas = document.getElementById('simHeatmapCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cw = W / GRID, ch = H / GRID;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw field background
+  ctx.fillStyle = '#0d0d1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw heatmap cells
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      const v = heatmap[y * GRID + x] / maxH;
+      if (v < 0.01) continue;
+      const hue = 240 - v * 210;
+      const light = 25 + v * 45;
+      ctx.fillStyle = `hsl(${hue},80%,${light}%)`;
+      ctx.fillRect(x * cw, y * ch, cw, ch);
+    }
+  }
+
+  // Grid overlay
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= GRID; i++) {
+    ctx.beginPath(); ctx.moveTo(i * cw, 0); ctx.lineTo(i * cw, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i * ch); ctx.lineTo(W, i * ch); ctx.stroke();
+  }
+
+  // Diagonal field split (y=x line: blue side above-left, red side below-right)
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W, H); ctx.stroke();
+  ctx.setLineDash([]);
+  // Hopper marker
+  ctx.strokeStyle = 'rgba(251,191,36,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(W / 2, H / 2, W * (13 / 144), 0, Math.PI * 2); ctx.stroke();
+
+  // Path trace
+  if (frames.length > 1) {
+    ctx.strokeStyle = 'rgba(251,191,36,0.5)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    frames.forEach((f, i) => {
+      const px = (f.p.x / FIELD) * W;
+      const py = (f.p.y / FIELD) * H;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+  }
+
+  // Start (green) / end (red) markers
+  const drawDot = (x, y, color) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc((x / FIELD) * W, (y / FIELD) * H, 4, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  drawDot(frames[0].p.x, frames[0].p.y, '#22c55e');
+  drawDot(frames[frames.length - 1].p.x, frames[frames.length - 1].p.y, '#ef4444');
+
+  // ── Speed timeline ──────────────────────────────────────────────────────────
+  const sc = document.getElementById('simSpeedCanvas');
+  const sctx = sc.getContext('2d');
+  const SW = sc.width, SH = sc.height;
+  sctx.clearRect(0, 0, SW, SH);
+  sctx.fillStyle = '#111118';
+  sctx.fillRect(0, 0, SW, SH);
+
+  const speeds = frames.map(f => Math.sqrt(f.p.vx ** 2 + f.p.vy ** 2));
+  const maxSpd = Math.max(...speeds, 1);
+  const avgSpd = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+
+  // avg line
+  sctx.strokeStyle = 'rgba(251,191,36,0.3)';
+  sctx.lineWidth = 1;
+  const avgY = SH - (avgSpd / maxSpd) * (SH - 6) - 3;
+  sctx.beginPath(); sctx.moveTo(0, avgY); sctx.lineTo(SW, avgY); sctx.stroke();
+
+  // speed curve
+  sctx.strokeStyle = '#6ab3ff';
+  sctx.lineWidth = 1.5;
+  sctx.beginPath();
+  speeds.forEach((spd, i) => {
+    const x = (i / (speeds.length - 1)) * SW;
+    const y = SH - (spd / maxSpd) * (SH - 6) - 3;
+    i === 0 ? sctx.moveTo(x, y) : sctx.lineTo(x, y);
+  });
+  sctx.stroke();
+
+  // ── Stats ───────────────────────────────────────────────────────────────────
+  const cellsVisited = heatmap.filter(v => v > 0).length;
+  const coverage = (cellsVisited / (GRID * GRID) * 100).toFixed(0);
+
+  const quarterCells = GRID / 4;
+  let centerDeadCount = 0;
+  for (let y = quarterCells; y < GRID * 3 / 4; y++)
+    for (let x = quarterCells; x < GRID * 3 / 4; x++)
+      if (heatmap[y * GRID + x] === 0) centerDeadCount++;
+
+  const lastSc = frames[frames.length - 1]?.sc || { player: 0, opponent: 0 };
+
+  // Use the robot's actual max speed from telemetry metadata; fall back to 200-rpm default (~34 in/s)
+  const robotMaxSpd = session.maxRobotSpeed || 34;
+  const avgSpdPct   = Math.round(avgSpd / robotMaxSpd * 100);
+  const maxSpdPct   = Math.round(maxSpd / robotMaxSpd * 100);
+
+  const coverageColor = coverage > 50 ? '#22c55e' : coverage > 25 ? '#f59e0b' : '#ef4444';
+  const deadColor = centerDeadCount > 30 ? '#ef4444' : centerDeadCount > 10 ? '#f59e0b' : '#22c55e';
+  const spdColor = avgSpdPct > 55 ? '#22c55e' : avgSpdPct > 30 ? '#f59e0b' : '#ef4444';
+
+  document.getElementById('simAnalyticsStats').innerHTML = `
+    <div class="sim-an-stat"><span>Field Coverage</span><span style="color:${coverageColor}">${coverage}%</span></div>
+    <div class="sim-an-stat"><span>Avg Speed</span><span style="color:${spdColor}">${avgSpd.toFixed(1)} in/s (${avgSpdPct}% of max)</span></div>
+    <div class="sim-an-stat"><span>Max Speed</span><span>${maxSpd.toFixed(1)} in/s (${maxSpdPct}% of max)</span></div>
+    <div class="sim-an-stat"><span>Final Score</span><span>${lastSc.player} &ndash; ${lastSc.opponent}</span></div>
+    <div class="sim-an-stat"><span>Center Dead Zones</span><span style="color:${deadColor}">${centerDeadCount} cells</span></div>
+    <div class="sim-an-stat"><span>Duration</span><span>${(frames.length / 10).toFixed(0)}s (${frames.length} frames)</span></div>
+  `;
+
+  // ── Coaching tips ────────────────────────────────────────────────────────────
+  const tips = [];
+  if (coverage < 25) tips.push({ type: 'warn', msg: 'Low field coverage — you are staying in a small area. Practice traversing all four quadrants.' });
+  else if (coverage < 45) tips.push({ type: 'info', msg: 'Moderate coverage. Try to reach the corners opposite your starting position.' });
+  if (centerDeadCount > 40) tips.push({ type: 'warn', msg: 'Large center dead zone — midfield control is key. Spend more time fighting for center objects.' });
+  // Speed thresholds are relative to the robot's configured max speed, not hardcoded
+  if (avgSpdPct < 25) tips.push({ type: 'warn', msg: `Average speed only ${avgSpdPct}% of your robot's max — you're leaving a lot of pace on the field.` });
+  else if (avgSpdPct < 40) tips.push({ type: 'info', msg: `Average speed is ${avgSpdPct}% of max. Pushing above 50% consistently will put more pressure on opponents.` });
+  else if (avgSpdPct > 60) tips.push({ type: 'good', msg: `High average speed (${avgSpdPct}% of max) — great aggression on the field.` });
+  if (lastSc.player > lastSc.opponent) tips.push({ type: 'good', msg: `Won ${lastSc.player}–${lastSc.opponent}. Review the heatmap to see which areas contributed most.` });
+  else if (lastSc.player < lastSc.opponent) tips.push({ type: 'warn', msg: `Lost ${lastSc.player}–${lastSc.opponent}. Study opponent positions on the heatmap to find contested zones.` });
+  else tips.push({ type: 'info', msg: 'Tied match. A more aggressive endgame push often breaks ties.' });
+  if (tips.length === 0) tips.push({ type: 'good', msg: 'Strong performance — solid coverage and speed.' });
+
+  const tipColor = { warn: '#f59e0b', good: '#22c55e', info: 'var(--t2)' };
+  document.getElementById('simAnalyticsTips').innerHTML = tips.map(t =>
+    `<div style="font-size:12px;color:${tipColor[t.type]};padding:5px 8px;border-radius:5px;background:var(--s3);line-height:1.5;">${t.msg}</div>`
+  ).join('');
 }
 
 // ─── INIT ──────────────────────────────────────────────────────────────────────

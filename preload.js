@@ -75,4 +75,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsGet:      ()                    => ipcRenderer.invoke('settings:get'),
   settingsSet:      (s)                   => ipcRenderer.invoke('settings:set', s),
 
+  // Telemetry
+  simSaveTelemetry: (session)             => ipcRenderer.invoke('sim:saveTelemetry', session),
+  simListSessions:  ()                    => ipcRenderer.invoke('sim:listSessions'),
+  simLoadSession:   (file)               => ipcRenderer.invoke('sim:loadSession', file),
+
 });

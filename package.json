@@ -20,6 +20,7 @@
     "copyright": "Copyright © 2025 Kyrio",
     "files": [
       "app.js",
+      "code.js",
       "main.js",
       "preload.js",
       "simulator.js",

@@ -84,11 +84,52 @@ const SIM = {
   gearRings: [],         // THREE.Object3D[] added to SIM.group
   annotationSprites: [], // THREE.Sprite[] added to SIM.group
   showAnnotations: false,
+
+  // Telemetry recording
+  telemetry: { recording: false, buffer: [], sessionId: null, mode: null, _tick: 0 },
+
+  // Hopper score counters (reset each match)
+  score: { player: 0, opponent: 0 },
+
+  // Ball wave tracking — waves respawn after every clear
+  ballWave: { count: 1, _respawnTimer: 0 },
+
+  // Game-mechanic runtime state
+  cargo: { playerHeld: 0, playerCapacity: 4, scoreCooldown: 0, shotCooldown: 0, playerBalls: [] },
+  climb: { player: { progress: 0, latched: false, scored: false, side: null } },
+  controls: { climbPressed: false },
+
+  // Runtime-only visuals attached to the player robot group
+  playerOverlayGroup: null,
 };
 
 // Field dimensions: 12ft × 12ft = 144in × 144in
 const FIELD_IN = 144;
 const FIELD_SCALE = 0.1; // 1 inch = 0.1 Three.js units → field = 14.4 units
+
+// Test-game layout constants
+const HOPPER_X      = FIELD_IN / 2;   // center of field
+const HOPPER_Y      = FIELD_IN / 2;
+const HOPPER_RADIUS = 13;             // inches — ball counts as scored when within this radius
+const BALL_RAD      = 2;              // 4" ball half-diameter
+const PUSH_DIST     = 12;             // robot-center to ball edge push threshold (in)
+const LADDER_BLUE   = { x: 16,  y: 72 };   // middle of left wall — player's alliance
+const LADDER_RED    = { x: 128, y: 72 };   // middle of right wall — opponent alliance
+const PLAYER_PICKUP_RANGE     = 12;
+const PLAYER_PICKUP_FRONT_BIAS = 10;
+const HOPPER_SCORE_INTERVAL   = 0.28;
+const PLAYER_SHOT_RANGE       = 84;
+const PLAYER_SHOT_INTERVAL    = 0.42;
+const PLAYER_SHOT_ARC         = 14;
+const CLIMB_BAR_HEIGHT        = 18;
+const CLIMB_BAR_HALF_SPAN     = 12;
+const HOPPER_SOLID_RADIUS     = HOPPER_RADIUS + 3.5;
+const HOPPER_APPROACH_RADIUS  = HOPPER_SOLID_RADIUS + 6;
+const CLIMB_POST_SOLID_RADIUS = 3.2;
+const CLIMB_LOCK_RANGE        = 10;
+const CLIMB_LOCK_SPEED        = 6;
+const CLIMB_CHARGE_TIME       = 1.2;
+const CLIMB_SCORE_BONUS       = 12;
 
 function inToWorld(inches) { return inches * FIELD_SCALE; }
 function worldToIn(world)  { return world / FIELD_SCALE; }
@@ -100,6 +141,7 @@ function openSimulator() {
   page.style.display = 'flex';
   if (!SIM.renderer) initSimRenderer();
   else if (!SIM.animId) simRenderLoop();
+  if (!SIM.gameObjects.length || !SIM.gameObjectsGroup?.children?.length) loadDefaultGameObjects();
   simResetRobot();
   simUpdateSidebar();
 }
@@ -158,6 +200,9 @@ function initSimRenderer() {
   // AI robots
   buildAIRobots();
 
+  // Field game elements
+  loadDefaultGameObjects();
+
   // Controls
   canvas.addEventListener('mousedown', e => {
     SIM.mouse.down = true;
@@ -185,13 +230,18 @@ function initSimRenderer() {
     simUpdateCamera(); e.preventDefault();
   }, { passive: false });
 
-  // Keyboard
+  // Keyboard — listen on document so keys work regardless of canvas focus
   canvas.setAttribute('tabindex', '0');
-  canvas.addEventListener('keydown', e => {
+  const _simKeyPage = document.getElementById('simPage');
+  document.addEventListener('keydown', e => {
+    if (!_simKeyPage || _simKeyPage.style.display === 'none') return;
     SIM.keys[e.key.toLowerCase()] = true;
     if (e.key === ' ') { simKeyTogglePistons(); e.preventDefault(); }
   });
-  canvas.addEventListener('keyup',   e => { SIM.keys[e.key.toLowerCase()] = false; });
+  document.addEventListener('keyup', e => {
+    if (!_simKeyPage || _simKeyPage.style.display === 'none') return;
+    SIM.keys[e.key.toLowerCase()] = false;
+  });
 
   // Gamepad
   window.addEventListener('gamepadconnected',    e => { SIM.gamepad = e.gamepad.index; simSetStatus('Controller connected'); if (typeof showToast === 'function') showToast('Controller connected', 'ok'); });
@@ -320,7 +370,8 @@ function simPositionRobotMesh() {
   if (!SIM.group) return;
   const wx = inToWorld(SIM.robot.x);
   const wz = inToWorld(SIM.robot.y); // Y in field = Z in world
-  SIM.group.position.set(wx, 0, wz);
+  const lift = simGetClimbLift(SIM.climb.player);
+  SIM.group.position.set(wx, inToWorld(lift), wz);
   SIM.group.rotation.y = -SIM.robot.angle * Math.PI / 180;
 }
 
@@ -346,12 +397,14 @@ function buildAIRobot(color, arrowColor) {
 
 function buildAIRobots() {
   const half = 8.5; // default half-size + margin
-  const far  = FIELD_IN - half - 10;
-  const near = half + 10;
+  const margin = half + 2;
+  const mid    = FIELD_IN / 2;
+  // Robots start at the midpoint of each wall, facing inward.
+  // Field is split diagonally (y=x line): blue side = y>x, red side = y<x.
   const defs = [
-    { x: far,  y: far,  angle: 180, team: 'blue', color: 0x3B82F6, arrow: 0xdbeafe }, // teammate
-    { x: near, y: near, angle: 0,   team: 'red',  color: 0xEF4444, arrow: 0xfee2e2 }, // opp 1
-    { x: far,  y: near, angle: 90,  team: 'red',  color: 0xB91C1C, arrow: 0xfca5a5 }, // opp 2
+    { x: mid,             y: FIELD_IN - margin, angle:   0, team: 'blue', color: 0x3B82F6, arrow: 0xdbeafe, role: 'scorer' }, // teammate  — middle of top wall, facing down
+    { x: FIELD_IN - margin, y: mid,             angle: -90, team: 'red',  color: 0xEF4444, arrow: 0xfee2e2, role: 'scorer' }, // opp 1    — middle of right wall, facing left
+    { x: mid,             y: margin,            angle: 180, team: 'red',  color: 0xB91C1C, arrow: 0xfca5a5, role: 'harass' }, // opp 2    — middle of bottom wall, facing up
   ];
   SIM.aiRobots = defs.map(d => {
     const group = buildAIRobot(d.color, d.arrow);
@@ -359,9 +412,15 @@ function buildAIRobots() {
       x: d.x, y: d.y, angle: d.angle,
       vx: 0, vy: 0, omega: 0,
       team: d.team,
+      role: d.role,
       group,
       startX: d.x, startY: d.y, startAngle: d.angle,
       targetX: d.x, targetY: d.y,
+      mlAction: null,  // {leftV, rightV} when ML-controlled; null = wander AI
+      _cargoCount: 0,
+      _scoreCooldown: 0,
+      _cargoBalls: [],
+      _climb: { progress: 0, latched: false, scored: false, side: d.team },
     };
     positionAIRobot(ai);
     return ai;
@@ -369,45 +428,216 @@ function buildAIRobots() {
 }
 
 function positionAIRobot(ai) {
-  ai.group.position.set(inToWorld(ai.x), 0, inToWorld(ai.y));
+  ai.group.position.set(inToWorld(ai.x), inToWorld(simGetClimbLift(ai._climb)), inToWorld(ai.y));
   ai.group.rotation.y = -ai.angle * Math.PI / 180;
 }
 
-function pickWanderTarget(ai) {
-  const mg = 18;
-  ai.targetX = mg + Math.random() * (FIELD_IN - 2 * mg);
-  if (ai.team === 'blue') {
-    ai.targetY = FIELD_IN / 2 + mg + Math.random() * (FIELD_IN / 2 - 2 * mg);
-  } else {
-    ai.targetY = mg + Math.random() * (FIELD_IN / 2 - 2 * mg);
+function simGetHopperApproachPoint(entity) {
+  const ex = entity?.x ?? HOPPER_X;
+  const ey = entity?.y ?? HOPPER_Y;
+  let dx = ex - HOPPER_X;
+  let dy = ey - HOPPER_Y;
+  const mag = Math.hypot(dx, dy) || 1;
+  dx /= mag; dy /= mag;
+  return {
+    x: HOPPER_X + dx * HOPPER_APPROACH_RADIUS,
+    y: HOPPER_Y + dy * HOPPER_APPROACH_RADIUS,
+  };
+}
+
+// ── Adaptive-AI weakness data (populated after 5+ sessions) ──────────────────
+let SIM_AI_WEAKNESS = null;
+
+async function simLoadAdaptiveData() {
+  SIM_AI_WEAKNESS = null;
+  if (!window.electronAPI?.simListSessions) return;
+  const list = await window.electronAPI.simListSessions();
+  const driverSessions = list.filter(s => s.mode === 'driver');
+  if (driverSessions.length < 5) return;
+
+  const raw = await Promise.all(
+    driverSessions.slice(0, 8).map(s => window.electronAPI.simLoadSession(s.file))
+  );
+  const sessions = raw.filter(s => s?.frames?.length > 20);
+  if (sessions.length < 5) return;
+
+  // Build a coarse 12×12 heatmap of where the player has been across all sessions
+  const GRID = 12;
+  const heat = new Array(GRID * GRID).fill(0);
+  sessions.forEach(s => s.frames.forEach(f => {
+    const gx = Math.min(GRID - 1, Math.floor(f.p.x / FIELD_IN * GRID));
+    const gy = Math.min(GRID - 1, Math.floor(f.p.y / FIELD_IN * GRID));
+    heat[gy * GRID + gx]++;
+  }));
+  const maxH = Math.max(...heat, 1);
+
+  // Weak zones: field cells the player rarely visits (ignoring outer-edge border cells)
+  const weakZones = [];
+  const hotZones = [];
+  for (let gy = 1; gy < GRID - 1; gy++)
+    for (let gx = 1; gx < GRID - 1; gx++)
+      if (heat[gy * GRID + gx] / maxH < 0.15) {
+        weakZones.push({ cx: (gx + 0.5) / GRID * FIELD_IN, cy: (gy + 0.5) / GRID * FIELD_IN });
+      } else if (heat[gy * GRID + gx] / maxH > 0.55) {
+        hotZones.push({ cx: (gx + 0.5) / GRID * FIELD_IN, cy: (gy + 0.5) / GRID * FIELD_IN });
+      }
+
+  const allSpeeds = sessions.flatMap(s => s.frames.map(f => Math.sqrt(f.p.vx ** 2 + f.p.vy ** 2)));
+  const playerAvgSpeed = allSpeeds.reduce((a, b) => a + b, 0) / Math.max(allSpeeds.length, 1);
+
+  SIM_AI_WEAKNESS = { weakZones, hotZones, playerAvgSpeed, analyzed: true };
+}
+
+// ── AI objective state machine ────────────────────────────────────────────────
+function updateAIObjective(ai) {
+  if (ai._climb?.latched) return; // robot is hanging — tickAIRobot zeroes velocity
+
+  const timeLeft = SIM.match.duration - SIM.match.elapsed;
+
+  // Last 20s: go climb
+  if (timeLeft <= 20) {
+    if (ai._state !== 'climb') {
+      ai._state = 'climb';
+      const ldr = ai.team === 'blue' ? LADDER_BLUE : LADDER_RED;
+      ai.targetX = ldr.x; ai.targetY = ldr.y;
+    }
+    return;
   }
-  ai._stallTimer = 0;
+
+  // Delivering to hopper — trigger when full, running low on time, or no balls left
+  const noBallsLeft = !SIM.gameObjects.some(o => o.type === 'ball' && !o.scored && !o.carriedBy);
+  const shouldDeliver = ai._cargoCount > 0 && (ai._cargoCount >= 4 || timeLeft <= 28 || noBallsLeft);
+  if (shouldDeliver) {
+    const approach = simGetHopperApproachPoint(ai);
+    ai._state = 'score';
+    ai.targetX = approach.x;
+    ai.targetY = approach.y;
+    if (Math.hypot(approach.x - ai.x, approach.y - ai.y) < 7) {
+      ai._scoreCooldown -= TICK_DT;
+      if (ai._scoreCooldown <= 0 && ai._cargoBalls.length) {
+        const ball = ai._cargoBalls.shift();
+        ball.scored = true;
+        ball.carriedBy = null;
+        ball.mesh.visible = false;
+        if (ai.team === 'blue') SIM.score.player++;
+        else SIM.score.opponent++;
+        ai._cargoCount--;
+        ai._scoreCooldown = HOPPER_SCORE_INTERVAL;
+      }
+      if (!ai._cargoCount) {
+        ai._cargoBall = null;
+        ai._state = null;
+      }
+    }
+    return;
+  }
+
+  // Ball was scored or captured by someone else while we were chasing it
+  if (ai._state === 'collect' && (ai._targetBall?.scored || (ai._targetBall?.carriedBy && ai._targetBall.carriedBy !== ai))) {
+    ai._state = null; ai._targetBall = null;
+  }
+
+  // Tracking toward a ball
+  if (ai._state === 'collect' && ai._targetBall) {
+    ai.targetX = ai._targetBall.x;
+    ai.targetY = ai._targetBall.y;
+    if (Math.hypot(ai._targetBall.x - ai.x, ai._targetBall.y - ai.y) < 14) {
+      const ball = ai._targetBall;
+      ball.carriedBy = ai;
+      ball.mesh.visible = false;
+      ai._cargoBalls.push(ball);
+      ai._cargoCount = Math.min(4, ai._cargoCount + 1);
+      ai._cargoBall = ball;
+      ai._targetBall = null;
+      ai._state = ai._cargoCount >= 4 ? 'score' : null;
+    }
+    return;
+  }
+
+  if (ai.role === 'harass' && SIM_AI_WEAKNESS?.analyzed && timeLeft > 28 && !ai._cargoCount) {
+    const player = SIM.robot;
+    const hot = SIM_AI_WEAKNESS.hotZones?.length
+      ? SIM_AI_WEAKNESS.hotZones.reduce((best, z) => {
+          const d = Math.hypot(z.cx - player.x, z.cy - player.y);
+          return d < best.d ? { z, d } : best;
+        }, { z: null, d: Infinity }).z
+      : null;
+    const px = hot ? (player.x + hot.cx) * 0.5 : player.x;
+    const py = hot ? (player.y + hot.cy) * 0.5 : player.y;
+    ai._state = 'pressure';
+    ai.targetX = px;
+    ai.targetY = py;
+    return;
+  }
+
+  // Acquire next target ball
+  const balls = SIM.gameObjects.filter(o => o.type === 'ball' && !o.scored && !o.carriedBy);
+  if (!balls.length) {
+    // All balls gone — climb early
+    ai._state = 'climb';
+    const ldr = ai.team === 'blue' ? LADDER_BLUE : LADDER_RED;
+    ai.targetX = ldr.x; ai.targetY = ldr.y;
+    return;
+  }
+
+  let best = null;
+  if (SIM_AI_WEAKNESS?.analyzed && SIM_AI_WEAKNESS.weakZones.length) {
+    // Prefer balls near the player's weak zones (player is unlikely to contest them)
+    best = balls.reduce((acc, o) => {
+      const weakScore = SIM_AI_WEAKNESS.weakZones.reduce((s, wz) =>
+        s + 1 / (1 + Math.hypot(o.x - wz.cx, o.y - wz.cy)), 0);
+      const aiDist = Math.hypot(o.x - ai.x, o.y - ai.y);
+      const score = weakScore / (aiDist * 0.008 + 1);
+      return score > acc.score ? { o, score } : acc;
+    }, { o: null, score: -Infinity }).o;
+  }
+  if (!best) {
+    best = balls.reduce((acc, o) => {
+      const d = Math.hypot(o.x - ai.x, o.y - ai.y);
+      return d < acc.d ? { o, d } : acc;
+    }, { o: null, d: Infinity }).o;
+  }
+
+  ai._targetBall = best;
+  ai._state = 'collect';
+  ai.targetX = best.x;
+  ai.targetY = best.y;
 }
 
 function tickAIRobot(ai) {
+  updateAIObjective(ai);
+
+  if (ai._climb?.latched) {
+    ai.vx = 0; ai.vy = 0; ai.omega = 0;
+    return;
+  }
+
   const dx = ai.targetX - ai.x;
   const dy = ai.targetY - ai.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < 15) pickWanderTarget(ai);
 
-  // Stall detection: if barely moving toward a distant target, pick a new one
+  // Stall detection
   ai._stallTimer = (ai._stallTimer || 0) + TICK_DT;
-  const aiSpd = Math.sqrt(ai.vx*ai.vx + ai.vy*ai.vy);
-  if (ai._stallTimer > 1.5 && dist > 20 && aiSpd < 2) { pickWanderTarget(ai); ai._stallTimer = 0; }
+  const aiSpd = Math.sqrt(ai.vx * ai.vx + ai.vy * ai.vy);
+  if (ai._stallTimer > 2.0 && dist > 20 && aiSpd < 2) {
+    ai._state = null; ai._targetBall = null; ai._stallTimer = 0;
+  }
 
-  // Desired heading to target (same convention as player: 0=+Y, 90=+X)
+  // Speed boost when adaptive mode is active
+  const adaptiveBoost = SIM_AI_WEAKNESS?.analyzed ? 1.15 : 1.0;
+
   const desiredAngle = Math.atan2(dx, -dy) * 180 / Math.PI;
   let angleDiff = desiredAngle - ai.angle;
   angleDiff = ((angleDiff + 180) % 360 + 360) % 360 - 180;
 
   const facingTarget = Math.abs(angleDiff) < 50;
-  const speed = Math.min(dist / 30, 1) * DRIVE_SPEED * (facingTarget ? 0.75 : 0.2);
-  const turnInput = Math.max(-1, Math.min(1, angleDiff / 40));
+  const speed        = Math.min(dist / 25, 1) * DRIVE_SPEED * adaptiveBoost * (facingTarget ? 0.90 : 0.35);
+  const turnInput  = Math.max(-1, Math.min(1, angleDiff / 35));
 
   const rad = ai.angle * Math.PI / 180;
   const tVx = Math.sin(rad) * speed;
   const tVy = -Math.cos(rad) * speed;
-  const tOm = turnInput * TURN_RATE * 0.85;
+  const tOm = turnInput * TURN_RATE * 0.90;
 
   const linAlpha  = TICK_DT / (speed > 0.1 ? DRIVE_TAU : COAST_TAU);
   const turnAlpha = TICK_DT / (Math.abs(tOm) > 0.1 ? TURN_TAU : COAST_TURN);
@@ -416,7 +646,7 @@ function tickAIRobot(ai) {
   ai.omega += (tOm - ai.omega) * turnAlpha;
 
   const spd = Math.sqrt(ai.vx ** 2 + ai.vy ** 2);
-  if (spd > DRIVE_SPEED) { ai.vx *= DRIVE_SPEED / spd; ai.vy *= DRIVE_SPEED / spd; }
+  if (spd > DRIVE_SPEED * adaptiveBoost) { const s = DRIVE_SPEED * adaptiveBoost / spd; ai.vx *= s; ai.vy *= s; }
 
   const a = ai.angle * Math.PI / 180;
   const cosA = Math.abs(Math.cos(a)), sinA = Math.abs(Math.sin(a));
@@ -427,10 +657,30 @@ function tickAIRobot(ai) {
   if (nx < hx || nx > FIELD_IN - hx) { ai.vx = 0; nx = Math.max(hx, Math.min(FIELD_IN - hx, nx)); hitWall = true; }
   if (ny < hy || ny > FIELD_IN - hy) { ai.vy = 0; ny = Math.max(hy, Math.min(FIELD_IN - hy, ny)); hitWall = true; }
   ai.x = nx; ai.y = ny;
-  if (hitWall) pickWanderTarget(ai);
+  if (hitWall) { ai._state = null; ai._targetBall = null; }
 
   ai.angle += ai.omega * TICK_DT;
-  // mesh sync happens centrally in simPhysicsTick after collision resolution
+
+  if (ai._state === 'climb') {
+    const ldr = ai.team === 'blue' ? LADDER_BLUE : LADDER_RED;
+    const nearLadder = Math.hypot(ai.x - ldr.x, ai.y - ldr.y) < CLIMB_LOCK_RANGE;
+    const stable = Math.hypot(ai.vx, ai.vy) < CLIMB_LOCK_SPEED;
+    if (nearLadder && stable) {
+      ai._climb.progress += TICK_DT;
+      if (ai._climb.progress >= CLIMB_CHARGE_TIME && !ai._climb.latched) {
+        ai._climb.latched = true;
+        if (!ai._climb.scored) {
+          if (ai.team === 'blue') SIM.score.player += CLIMB_SCORE_BONUS;
+          else SIM.score.opponent += CLIMB_SCORE_BONUS;
+          ai._climb.scored = true;
+        }
+      }
+    } else {
+      ai._climb.progress = Math.max(0, ai._climb.progress - TICK_DT * 0.6);
+    }
+  } else {
+    ai._climb.progress = 0;
+  }
 }
 
 function resetAIRobots() {
@@ -438,58 +688,385 @@ function resetAIRobots() {
     ai.x = ai.startX; ai.y = ai.startY; ai.angle = ai.startAngle;
     ai.vx = 0; ai.vy = 0; ai.omega = 0;
     ai.targetX = ai.startX; ai.targetY = ai.startY;
+    ai._state = null; ai._targetBall = null; ai._cargoBall = null; ai._stallTimer = 0;
+    ai._cargoCount = 0; ai._scoreCooldown = 0; ai._cargoBalls = [];
+    ai._climb = { progress: 0, latched: false, scored: false, side: ai.team };
     positionAIRobot(ai);
   });
 }
 
-// ─── GAME OBJECTS — PUSH BACK 2025-26 ────────────────────────────────────────
+// ─── GAME OBJECTS — TEST GAME ─────────────────────────────────────────────────
 function loadDefaultGameObjects() {
-  // Clear existing
-  while (SIM.gameObjectsGroup.children.length) {
+  while (SIM.gameObjectsGroup.children.length)
     SIM.gameObjectsGroup.remove(SIM.gameObjectsGroup.children[0]);
-  }
   SIM.gameObjects = [];
+  SIM.score.player = 0;
+  SIM.score.opponent = 0;
+  SIM.ballWave.count = 1;
+  SIM.ballWave._respawnTimer = 0;
 
-  // Push Back uses 4" foam balls as the only game object.
-  // Standard starting layout: 3 rows of 6 balls on each side of the center barrier,
-  // plus 4 balls stacked against the near walls (in the troughs).
-  const ballRadius = inToWorld(2); // 4" diameter
-  const ballMat = new THREE.MeshStandardMaterial({ color: 0xdde8f0, roughness: 0.6, metalness: 0.05 });
+  // ── Central hopper goal ───────────────────────────────────────────────────
+  const hopperMetal = new THREE.MeshStandardMaterial({ color: 0xd9a728, roughness: 0.35, metalness: 0.55 });
+  const hopperBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(inToWorld(HOPPER_RADIUS + 2.5), inToWorld(HOPPER_RADIUS - 2), inToWorld(8), 24, 1, true),
+    hopperMetal
+  );
+  hopperBody.position.set(inToWorld(HOPPER_X), inToWorld(4), inToWorld(HOPPER_Y));
+  hopperBody.castShadow = true;
+  SIM.gameObjectsGroup.add(hopperBody);
 
-  // Red side (z < 72): rows at z = 20, 36, 56
-  // Blue side (z > 72): rows at z = 88, 108, 124
-  const rowsRed  = [20, 36, 56];
-  const rowsBlue = [88, 108, 124];
-  const cols = [24, 48, 72, 96, 120]; // x positions
+  const hopperLip = new THREE.Mesh(
+    new THREE.TorusGeometry(inToWorld(HOPPER_RADIUS), inToWorld(1.3), 10, 40),
+    new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.3, metalness: 0.45 })
+  );
+  hopperLip.rotation.x = Math.PI / 2;
+  hopperLip.position.set(inToWorld(HOPPER_X), inToWorld(7.5), inToWorld(HOPPER_Y));
+  SIM.gameObjectsGroup.add(hopperLip);
 
-  [...rowsRed, ...rowsBlue].forEach(fy => {
-    cols.forEach(fx => {
-      const ball = new THREE.Mesh(
-        new THREE.SphereGeometry(ballRadius, 12, 8),
-        ballMat.clone()
-      );
-      ball.position.set(inToWorld(fx), ballRadius, inToWorld(fy));
+  const hopperNet = new THREE.Mesh(
+    new THREE.CylinderGeometry(inToWorld(HOPPER_RADIUS - 1.5), inToWorld(HOPPER_RADIUS - 4.5), inToWorld(6), 16, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0xf8e7a2, transparent: true, opacity: 0.22, roughness: 1 })
+  );
+  hopperNet.position.set(inToWorld(HOPPER_X), inToWorld(3.5), inToWorld(HOPPER_Y));
+  SIM.gameObjectsGroup.add(hopperNet);
+
+  // ── Climb bars on both sides of the field ────────────────────────────────
+  [LADDER_BLUE, LADDER_RED].forEach((ldr, i) => {
+    const mat = new THREE.MeshStandardMaterial({
+      color: i === 0 ? 0x6ab3ff : 0xff7b77,
+      roughness: 0.38,
+      metalness: 0.55
+    });
+    const supportZ = [ldr.y - CLIMB_BAR_HALF_SPAN, ldr.y + CLIMB_BAR_HALF_SPAN];
+    supportZ.forEach(z => {
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(inToWorld(2.4), inToWorld(2.8), inToWorld(1.2), 12), mat.clone());
+      foot.position.set(inToWorld(ldr.x), inToWorld(0.6), inToWorld(z));
+      SIM.gameObjectsGroup.add(foot);
+
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(inToWorld(0.75), inToWorld(0.75), inToWorld(CLIMB_BAR_HEIGHT), 10), mat.clone());
+      post.position.set(inToWorld(ldr.x), inToWorld(CLIMB_BAR_HEIGHT / 2), inToWorld(z));
+      post.castShadow = true;
+      SIM.gameObjectsGroup.add(post);
+    });
+
+    const bar = new THREE.Mesh(
+      new THREE.CylinderGeometry(inToWorld(0.85), inToWorld(0.85), inToWorld(CLIMB_BAR_HALF_SPAN * 2), 12),
+      new THREE.MeshStandardMaterial({ color: 0xdde4ea, roughness: 0.3, metalness: 0.75 })
+    );
+    bar.rotation.x = Math.PI / 2;
+    bar.position.set(inToWorld(ldr.x), inToWorld(CLIMB_BAR_HEIGHT), inToWorld(ldr.y));
+    bar.castShadow = true;
+    SIM.gameObjectsGroup.add(bar);
+  });
+
+  // ── 36 balls in a 6×6 grid ────────────────────────────────────────────
+  const ballRadius = inToWorld(BALL_RAD);
+  const ballMat    = new THREE.MeshStandardMaterial({ color: 0xff6b35, roughness: 0.6, metalness: 0.05 });
+  const ballXs = [18, 39, 60, 84, 105, 126];
+  const ballYs = [18, 39, 60, 84, 105, 126];
+
+  ballYs.forEach(by => {
+    ballXs.forEach(bx => {
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 10, 7), ballMat.clone());
+      ball.position.set(inToWorld(bx), ballRadius, inToWorld(by));
       ball.castShadow = true;
       SIM.gameObjectsGroup.add(ball);
-      SIM.gameObjects.push({ type: 'ball', x: fx, y: fy, mesh: ball, scored: false });
+      SIM.gameObjects.push({
+        type: 'ball', x: bx, y: by, z: BALL_RAD, mesh: ball,
+        scored: false, carriedBy: null, shot: null, _lastTouchedBy: null,
+      });
     });
   });
+}
 
-  // 4 pre-loaded balls in the troughs (near each wall center)
-  const troughBalls = [
-    { x: 72, y:  4 }, { x: 72, y: 140 },
-    { x:  4, y: 72 }, { x: 140, y:  72 },
+// ── Ball-pushing physics + hopper scoring ────────────────────────────────────
+function simEnsurePlayerOverlayGroup() {
+  if (!SIM.group) return null;
+  if (!SIM.playerOverlayGroup) {
+    SIM.playerOverlayGroup = new THREE.Group();
+    SIM.playerOverlayGroup.name = 'player_overlay';
+  }
+  if (SIM.playerOverlayGroup.parent !== SIM.group) SIM.group.add(SIM.playerOverlayGroup);
+  return SIM.playerOverlayGroup;
+}
+
+function simUpdatePlayerCargoVisuals() {
+  const group = simEnsurePlayerOverlayGroup();
+  if (!group) return;
+  while (group.children.length) group.remove(group.children[0]);
+
+  const count = SIM.cargo.playerBalls.length;
+  if (!count) return;
+
+  const slots = [
+    [-4.0, 4.2, 1.4],
+    [-1.3, 4.2, 1.4],
+    [ 1.3, 4.2, 1.4],
+    [ 4.0, 4.2, 1.4],
   ];
-  troughBalls.forEach(pos => {
-    const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(ballRadius, 12, 8),
-      ballMat.clone()
+
+  for (let i = 0; i < count && i < slots.length; i++) {
+    const [x, y, z] = slots[i];
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(inToWorld(BALL_RAD * 0.9), 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xff8a3d, roughness: 0.55, metalness: 0.08, emissive: 0x3a1400, emissiveIntensity: 0.15 })
     );
-    ball.position.set(inToWorld(pos.x), ballRadius, inToWorld(pos.y));
-    ball.castShadow = true;
-    SIM.gameObjectsGroup.add(ball);
-    SIM.gameObjects.push({ type: 'ball', x: pos.x, y: pos.y, mesh: ball, scored: true });
+    mesh.position.set(inToWorld(x), inToWorld(y), inToWorld(z));
+    mesh.castShadow = true;
+    group.add(mesh);
+  }
+}
+
+function simSyncCargoState() {
+  SIM.cargo.playerHeld = SIM.cargo.playerBalls.length;
+  simUpdatePlayerCargoVisuals();
+}
+
+function simGetFacingDiffDeg(fromX, fromY, angleDeg, targetX, targetY) {
+  const desired = Math.atan2(targetX - fromX, -(targetY - fromY)) * 180 / Math.PI;
+  let diff = desired - angleDeg;
+  diff = ((diff + 180) % 360 + 360) % 360 - 180;
+  return diff;
+}
+
+function simLaunchStoredBall(owner = 'player') {
+  if (owner !== 'player') return false;
+  const ball = SIM.cargo.playerBalls.shift();
+  if (!ball) return false;
+
+  const front = simGetPlayerPickupPoint();
+  const distToHopper = Math.hypot(HOPPER_X - front.x, HOPPER_Y - front.y);
+  const facingDiff = Math.abs(simGetFacingDiffDeg(front.x, front.y, SIM.robot.angle, HOPPER_X, HOPPER_Y));
+  const willScore = distToHopper <= PLAYER_SHOT_RANGE && facingDiff <= 65;
+
+  const rad = SIM.robot.angle * Math.PI / 180;
+  const missX = Math.max(BALL_RAD, Math.min(FIELD_IN - BALL_RAD, front.x + Math.sin(rad) * 28));
+  const missY = Math.max(BALL_RAD, Math.min(FIELD_IN - BALL_RAD, front.y - Math.cos(rad) * 28));
+  const targetX = willScore ? HOPPER_X : missX;
+  const targetY = willScore ? HOPPER_Y : missY;
+
+  ball.carriedBy = null;
+  ball.shot = {
+    owner,
+    t: 0,
+    duration: Math.max(0.32, Math.min(0.75, distToHopper / 130)),
+    startX: front.x,
+    startY: front.y,
+    startZ: 6.5,
+    targetX,
+    targetY,
+    apex: PLAYER_SHOT_ARC,
+    willScore,
+  };
+  ball.x = front.x;
+  ball.y = front.y;
+  ball.z = ball.shot.startZ;
+  ball._lastTouchedBy = owner;
+  ball.mesh.visible = true;
+  simSyncCargoState();
+  return true;
+}
+
+function simTickBallFlight(o) {
+  const shot = o.shot;
+  if (!shot) return false;
+
+  shot.t += TICK_DT / shot.duration;
+  const t = Math.min(1, shot.t);
+  o.x = shot.startX + (shot.targetX - shot.startX) * t;
+  o.y = shot.startY + (shot.targetY - shot.startY) * t;
+  o.z = BALL_RAD + shot.startZ * (1 - t) + Math.sin(t * Math.PI) * shot.apex;
+  o.mesh.visible = true;
+  o.mesh.position.set(inToWorld(o.x), inToWorld(o.z), inToWorld(o.y));
+
+  if (t < 1) return true;
+
+  o.shot = null;
+  if (shot.willScore) {
+    o.scored = true;
+    o.mesh.visible = false;
+    if (shot.owner === 'player') SIM.score.player++;
+    else SIM.score.opponent++;
+  } else {
+    o.z = BALL_RAD;
+    o.mesh.position.set(inToWorld(o.x), inToWorld(o.z), inToWorld(o.y));
+  }
+  return true;
+}
+
+function simHasMechanismType(type) {
+  return !!SIM.config?.mechanisms?.some(m => (m.type || '').toLowerCase() === type);
+}
+
+function simIsMechanismActive(type) {
+  return !!SIM.config?.mechanisms?.some(m => (m.type || '').toLowerCase() === type && SIM.mechanisms[m.id]?.active);
+}
+
+function simGetPlayerPickupPoint() {
+  const rad = SIM.robot.angle * Math.PI / 180;
+  return {
+    x: SIM.robot.x + Math.sin(rad) * PLAYER_PICKUP_FRONT_BIAS,
+    y: SIM.robot.y - Math.cos(rad) * PLAYER_PICKUP_FRONT_BIAS,
+  };
+}
+
+function simTickPlayerCargo() {
+  const keyIntake = !!SIM.keys['z'];
+  const keyShoot  = !!SIM.keys['x'];
+  const legacyIntakeActive = !simHasMechanismType('intake') && !!SIM.config?.motors?.some(
+    m => m.role === 'intake' && Math.abs(SIM.motors[m.id]?.voltage || 0) > 25
+  );
+  const intakeActive = keyIntake || simIsMechanismActive('intake') || simIsMechanismActive('conveyor') || legacyIntakeActive;
+  if (intakeActive && SIM.cargo.playerBalls.length < SIM.cargo.playerCapacity) {
+    const front = simGetPlayerPickupPoint();
+    const target = SIM.gameObjects
+      .filter(o => o.type === 'ball' && !o.scored && !o.carriedBy && !o.shot)
+      .reduce((best, o) => {
+        const d = Math.hypot(o.x - front.x, o.y - front.y);
+        return d < best.d ? { o, d } : best;
+      }, { o: null, d: Infinity });
+    if (target.o && target.d < PLAYER_PICKUP_RANGE) {
+      target.o.carriedBy = 'player';
+      target.o.mesh.visible = false;
+      SIM.cargo.playerBalls.push(target.o);
+      simSyncCargoState();
+    }
+  }
+
+  const shooterActive = keyShoot || simIsMechanismActive('hopper') || simIsMechanismActive('flywheel') || simIsMechanismActive('outtake');
+  if (SIM.cargo.scoreCooldown > 0) SIM.cargo.scoreCooldown -= TICK_DT;
+  if (SIM.cargo.shotCooldown > 0) SIM.cargo.shotCooldown -= TICK_DT;
+
+  if (shooterActive && SIM.cargo.playerBalls.length > 0 && SIM.cargo.shotCooldown <= 0) {
+    if (simLaunchStoredBall('player')) {
+      SIM.cargo.shotCooldown = PLAYER_SHOT_INTERVAL;
+      SIM.cargo.scoreCooldown = HOPPER_SCORE_INTERVAL;
+    }
+  }
+}
+
+function simGetNearestLadder(x, y) {
+  const blueD = Math.hypot(x - LADDER_BLUE.x, y - LADDER_BLUE.y);
+  const redD  = Math.hypot(x - LADDER_RED.x,  y - LADDER_RED.y);
+  return blueD <= redD
+    ? { side: 'blue', anchor: LADDER_BLUE, dist: blueD }
+    : { side: 'red',  anchor: LADDER_RED,  dist: redD };
+}
+
+function simGetClimbAttachPose(side) {
+  const anchor = side === 'red' ? LADDER_RED : LADDER_BLUE;
+  return {
+    x: anchor.x + (side === 'red' ? -2.6 : 2.6),
+    y: anchor.y,
+    angle: side === 'red' ? -90 : 90,
+  };
+}
+
+function simGetClimbLift(climbState) {
+  if (!climbState) return 0;
+  if (climbState.latched) return 11.5;
+  const t = Math.max(0, Math.min(1, (climbState.progress || 0) / CLIMB_CHARGE_TIME));
+  return t * 8.5;
+}
+
+function simTickPlayerClimb() {
+  const climbActive = !!SIM.keys['c'] || SIM.controls.climbPressed || simIsMechanismActive('climb');
+  const climb = SIM.climb.player;
+  const timeLeft = SIM.match.duration - SIM.match.elapsed;
+  const freeRoam = SIM.match.mode === 'freeRoam';
+  if (!climbActive || (!freeRoam && timeLeft > 20) || climb.latched) {
+    if (!climb.latched) { climb.progress = 0; climb.side = null; }
+    return;
+  }
+
+  const nearest = simGetNearestLadder(SIM.robot.x, SIM.robot.y);
+  climb.side = nearest.side;
+  const nearLadder = nearest.dist < CLIMB_LOCK_RANGE;
+  const stable = Math.hypot(SIM.robot.vx, SIM.robot.vy) < CLIMB_LOCK_SPEED;
+  if (!nearLadder || !stable) {
+    climb.progress = Math.max(0, climb.progress - TICK_DT * 0.8);
+    return;
+  }
+
+  climb.progress += TICK_DT;
+  if (climb.progress >= CLIMB_CHARGE_TIME) {
+    climb.latched = true;
+    const pose = simGetClimbAttachPose(climb.side);
+    SIM.robot.x = pose.x;
+    SIM.robot.y = pose.y;
+    SIM.robot.angle = pose.angle;
+    SIM.robot.vx = 0; SIM.robot.vy = 0; SIM.robot.omega = 0;
+    _targetVx = 0; _targetVy = 0; _targetOmega = 0;
+    if (!climb.scored) {
+      SIM.score.player += CLIMB_SCORE_BONUS;
+      climb.scored = true;
+    }
+  }
+}
+
+function tickGameObjects() {
+  simTickPlayerCargo();
+  simTickPlayerClimb();
+
+  const robots = [{ r: SIM.robot, tag: 'player' }, ...SIM.aiRobots.map(r => ({ r, tag: 'ai' }))];
+  SIM.gameObjects.forEach(o => {
+    if (o.type !== 'ball' || o.scored) return;
+    if (simTickBallFlight(o)) return;
+    if (o.carriedBy) return;
+
+    robots.forEach(({ r, tag }) => {
+      const dx = o.x - r.x, dy = o.y - r.y;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d < PUSH_DIST && d > 0.01) {
+        const spd      = Math.sqrt(r.vx * r.vx + r.vy * r.vy);
+        const overlap  = (PUSH_DIST - d);
+        const impulse  = overlap * 0.5 + spd * 0.3;
+        o.x += (dx / d) * impulse * TICK_DT;
+        o.y += (dy / d) * impulse * TICK_DT;
+        o._lastTouchedBy = tag;
+      }
+    });
+
+    o.x = Math.max(BALL_RAD, Math.min(FIELD_IN - BALL_RAD, o.x));
+    o.y = Math.max(BALL_RAD, Math.min(FIELD_IN - BALL_RAD, o.y));
+
+    // Score into hopper
+    if (Math.hypot(o.x - HOPPER_X, o.y - HOPPER_Y) < HOPPER_RADIUS) {
+      o.scored = true;
+      o.mesh.visible = false;
+      if (o._lastTouchedBy === 'player') SIM.score.player++;
+      else SIM.score.opponent++;
+    } else {
+      o.mesh.position.set(inToWorld(o.x), inToWorld(BALL_RAD), inToWorld(o.y));
+    }
   });
+
+  // Wave respawn: when every ball is gone and there's still time to play, bring them back
+  if (SIM.match.running && (SIM.match.duration - SIM.match.elapsed) > 22) {
+    const free = SIM.gameObjects.filter(o => o.type === 'ball' && !o.scored && !o.carriedBy && !o.shot).length;
+    if (free === 0) {
+      SIM.ballWave._respawnTimer += TICK_DT;
+      if (SIM.ballWave._respawnTimer >= 2.5) simRespawnBalls();
+    } else {
+      SIM.ballWave._respawnTimer = 0;
+    }
+  }
+}
+
+function simRespawnBalls() {
+  const positions = [];
+  [18, 39, 60, 84, 105, 126].forEach(by => [18, 39, 60, 84, 105, 126].forEach(bx => positions.push({ x: bx, y: by })));
+  let p = 0;
+  SIM.gameObjects.forEach(o => {
+    if (o.type !== 'ball' || !o.scored || p >= positions.length) return;
+    const pos = positions[p++];
+    o.x = pos.x; o.y = pos.y; o.z = BALL_RAD;
+    o.scored = false; o.carriedBy = null; o.shot = null; o._lastTouchedBy = null;
+    o.mesh.visible = true;
+    o.mesh.position.set(inToWorld(pos.x), inToWorld(BALL_RAD), inToWorld(pos.y));
+  });
+  SIM.ballWave.count++;
+  SIM.ballWave._respawnTimer = 0;
 }
 
 // ─── PHYSICS CONSTANTS (VEX-accurate, overridden by config on load) ──────────
@@ -597,16 +1174,54 @@ function resolveAllRobotCollisions() {
   };
   clamp(r, pW, pH);
   SIM.aiRobots.forEach(ai => clamp(ai, 15, 15));
+
+  const obstacles = [
+    { x: HOPPER_X, y: HOPPER_Y, radius: HOPPER_SOLID_RADIUS },
+    { x: LADDER_BLUE.x, y: LADDER_BLUE.y - CLIMB_BAR_HALF_SPAN, radius: CLIMB_POST_SOLID_RADIUS },
+    { x: LADDER_BLUE.x, y: LADDER_BLUE.y + CLIMB_BAR_HALF_SPAN, radius: CLIMB_POST_SOLID_RADIUS },
+    { x: LADDER_RED.x,  y: LADDER_RED.y  - CLIMB_BAR_HALF_SPAN, radius: CLIMB_POST_SOLID_RADIUS },
+    { x: LADDER_RED.x,  y: LADDER_RED.y  + CLIMB_BAR_HALF_SPAN, radius: CLIMB_POST_SOLID_RADIUS },
+  ];
+  const resolveVsObstacle = (bot, width, length) => {
+    if (bot === SIM.robot && SIM.climb.player?.latched) return;
+    if (bot !== SIM.robot && bot._climb?.latched) return;
+    const botRadius = Math.max(width, length) * 0.42;
+    obstacles.forEach(obs => {
+      const dx = bot.x - obs.x, dy = bot.y - obs.y;
+      const d = Math.hypot(dx, dy) || 0.0001;
+      const minD = botRadius + obs.radius;
+      if (d < minD) {
+        const nx = dx / d, ny = dy / d;
+        const push = minD - d;
+        bot.x += nx * push;
+        bot.y += ny * push;
+        const vn = bot.vx * nx + bot.vy * ny;
+        if (vn < 0) {
+          bot.vx -= vn * nx;
+          bot.vy -= vn * ny;
+        }
+      }
+    });
+  };
+  resolveVsObstacle(r, pW, pH);
+  SIM.aiRobots.forEach(ai => resolveVsObstacle(ai, 15, 15));
+  clamp(r, pW, pH);
+  SIM.aiRobots.forEach(ai => clamp(ai, 15, 15));
 }
 
 function simPhysicsTick() {
-  if (SIM.match.mode === 'driver') {
+  if (SIM.match.mode === 'driver' || SIM.match.mode === 'freeRoam') {
     processDriverInput();
   } else if (SIM.match.mode === 'pid') {
     processPIDTick();
   }
 
   const r = SIM.robot;
+
+  if (SIM.climb.player.latched) {
+    r.vx = 0; r.vy = 0; r.omega = 0;
+    _targetVx = 0; _targetVy = 0; _targetOmega = 0;
+  }
 
   // First-order lag: separate tau for driving vs coasting so acceleration and
   // braking feel match real V5 motor + carpet behavior independently.
@@ -696,13 +1311,23 @@ function simPhysicsTick() {
   SIM.sensors.odomY     = r.y + (Math.random() - 0.5) * 0.05;
 
   if (SIM.match.running) {
-    SIM.match.elapsed = Math.min(SIM.match.duration, SIM.match.elapsed + TICK_DT);
-    if (SIM.match.elapsed >= SIM.match.duration) simStopMatch();
+    if (SIM.match.mode !== 'freeRoam') {
+      SIM.match.elapsed = Math.min(SIM.match.duration, SIM.match.elapsed + TICK_DT);
+      if (SIM.match.elapsed >= SIM.match.duration) simStopMatch();
+    }
   }
 
-  // Tick AI robots (physics + wall clamp inside tickAIRobot)
+  // Tick AI robots — skipped in free roam; ML policy takes over when mlAction is set
   if (SIM.match.running) {
-    SIM.aiRobots.forEach(tickAIRobot);
+    if (SIM.match.mode !== 'freeRoam') {
+      SIM.aiRobots.forEach(ai => ai.mlAction ? simApplyMLAction(ai) : tickAIRobot(ai));
+    }
+    tickGameObjects();
+  }
+
+  // Telemetry: sample at ~10fps (every 6 physics ticks at 60Hz)
+  if (SIM.telemetry.recording && SIM.match.running) {
+    if (++SIM.telemetry._tick % 6 === 0) SIM.telemetry.buffer.push(simSnapshotState());
   }
 
   // Robot–robot collision resolution (runs even pre-match so player can bump stationary AIs)
@@ -736,9 +1361,8 @@ function processDriverInput() {
   leftV  = Math.max(-1, Math.min(1, kFwd - kTurn));
   rightV = Math.max(-1, Math.min(1, kFwd + kTurn));
 
-  // Keyboard intake
-  if (k['r']) intakeVoltage =  100;
-  if (k['f']) intakeVoltage = -100;
+  // Keyboard intake uses Z by default
+  if (k['z']) intakeVoltage = 100;
 
   // Gamepad: true tank drive (left stick Y = left side, right stick Y = right side)
   if (SIM.gamepad !== null) {
@@ -770,8 +1394,14 @@ function processDriverInput() {
 
   // Mechanism keybinds — run after legacy so they take priority on same motor
   (SIM.config?.mechanisms || []).forEach(mech => {
-    if (!mech.keyBind) return;
-    const held    = !!k[mech.keyBind.toLowerCase()];
+    const mechType = (mech.type || '').toLowerCase();
+    const defaultKey = mech.keyBind
+      ? mech.keyBind.toLowerCase()
+      : (mechType === 'intake' || mechType === 'conveyor') ? 'z'
+      : (mechType === 'hopper' || mechType === 'flywheel' || mechType === 'outtake') ? 'x'
+      : '';
+    if (!defaultKey) return;
+    const held    = !!k[defaultKey];
     const revHeld = mech.reverseKeyBind ? !!k[mech.reverseKeyBind.toLowerCase()] : false;
     if (!SIM.mechanisms[mech.id]) SIM.mechanisms[mech.id] = { active: false };
     SIM.mechanisms[mech.id].active = held || revHeld;
@@ -1001,6 +1631,7 @@ async function simLoadOBJ(objPath, mtlPath) {
   SIM.group.add(orientGroup);
 
   simPositionRobotMesh();
+  simSyncCargoState();
   buildMechanicsVisuals();
   simHideLoading();
   simSetStatus('Robot model loaded');
@@ -1091,12 +1722,15 @@ function simToggleMatch() {
   if (SIM.match.running) simStopMatch(); else simStartMatch();
 }
 function simStartMatch() {
+  simStartTelemetry();
+  simLoadAdaptiveData(); // async — loads weakness profile in background from past sessions
   SIM.match.running = true;
   const btn = document.getElementById('simStartBtn');
   if (btn) { btn.textContent = '⏸ Pause'; btn.style.background = 'var(--gold)'; btn.style.color = '#fff'; }
   if (SIM.match.mode === 'auton') simRunAuton();
 }
 function simStopMatch() {
+  simFlushTelemetry();
   SIM.match.running = false;
   SIM.autonRunning = false;
   const btn = document.getElementById('simStartBtn');
@@ -1105,18 +1739,25 @@ function simStopMatch() {
 function simResetMatch() {
   simStopMatch();
   SIM.match.elapsed = 0;
-  simResetRobot();
+  loadDefaultGameObjects();
+  simResetRobot(); // also resets cargo, climb, and AI robots
   SIM.pid.history = []; SIM.pid.current = 0; SIM.pid.integral = 0; SIM.pid.prevError = 0;
 }
 
 // ─── ROBOT RESET ──────────────────────────────────────────────────────────────
 function simResetRobot() {
-  // Player starts in blue alliance corner (far side, y > 72)
+  // Player starts at the middle of the left wall, facing inward (+X direction).
   const half = (SIM.config?.drivetrain?.robotWidth || SIM.robot.width) / 2 + 1;
-  SIM.robot.x = half + 10;
-  SIM.robot.y = FIELD_IN - half - 10;
-  SIM.robot.angle = 180;
+  SIM.robot.x = half + 2;
+  SIM.robot.y = FIELD_IN / 2;
+  SIM.robot.angle = 90;
   SIM.robot.vx = 0; SIM.robot.vy = 0; SIM.robot.omega = 0; SIM.robot.snapTarget = null;
+  SIM.cargo.playerBalls = [];
+  SIM.cargo.scoreCooldown = 0;
+  SIM.cargo.shotCooldown = 0;
+  simSyncCargoState();
+  SIM.controls.climbPressed = false;
+  SIM.climb.player = { progress: 0, latched: false, scored: false, side: null };
   SIM.sensors.encFwd = 0; SIM.sensors.imuDrift = 0;
   _targetVx = 0; _targetVy = 0; _targetOmega = 0;
   simPositionRobotMesh();
@@ -1141,8 +1782,14 @@ function simSetMode(mode) {
   const autonPanel = document.getElementById('simAutonPanel');
   if (autonPanel) autonPanel.style.display = mode === 'auton' ? 'block' : 'none';
 
+  // Hide AI robots in free roam; show them in competition modes
+  SIM.aiRobots.forEach(ai => { if (ai.group) ai.group.visible = mode !== 'freeRoam'; });
+
   if (mode === 'pid') {
     SIM.pid.target = 90; SIM.pid.current = 0;
+    simStartMatch();
+  } else if (mode === 'freeRoam') {
+    simResetMatch();
     simStartMatch();
   }
 }
@@ -1261,24 +1908,53 @@ function simUpdateSidebar() {
   set('simStatY',     r.y.toFixed(1) + '"');
   set('simStatH',     ((r.angle % 360 + 360) % 360).toFixed(1) + '°');
   set('simStatSpd',   (Math.sqrt(r.vx**2 + r.vy**2)).toFixed(1) + ' in/s');
+  set('simStatCargo', `${SIM.cargo.playerBalls.length}/${SIM.cargo.playerCapacity}`);
+  set('simStatPScore', String(SIM.score.player));
+  set('simStatOScore', String(SIM.score.opponent));
+  const climbState = SIM.climb.player.latched
+    ? `Hanging (${(SIM.climb.player.side || 'blue').toUpperCase()})`
+    : SIM.climb.player.progress > 0.05
+      ? `Climbing ${(SIM.climb.player.progress / CLIMB_CHARGE_TIME * 100).toFixed(0)}%`
+      : 'Ready';
+  set('simStatClimb', climbState);
   set('simSensorImu', s.imu.toFixed(1) + '°');
   set('simSensorOdomX', s.odomX.toFixed(1) + '"');
   set('simSensorOdomY', s.odomY.toFixed(1) + '"');
   set('simSensorEnc',   Math.round(s.encFwd) + ' ticks');
 
   // Match timer
+  const isFreeRoam = SIM.match.mode === 'freeRoam';
   const rem = Math.max(0, SIM.match.duration - SIM.match.elapsed);
   const m = Math.floor(rem / 60), sec = Math.floor(rem % 60);
-  set('simTimer', `${m}:${String(sec).padStart(2,'0')}`);
+  const timerStr = isFreeRoam ? '∞' : `${m}:${String(sec).padStart(2,'0')}`;
+  set('simTimer', timerStr);
 
   // Period badge
-  const isAuton = SIM.match.mode === 'auton';
-  const isPID   = SIM.match.mode === 'pid';
+  const isAuton  = SIM.match.mode === 'auton';
+  const isPID    = SIM.match.mode === 'pid';
+  const endgame  = !isFreeRoam && rem <= 20 && SIM.match.running;
   const badge = document.getElementById('simPeriodBadge');
   if (badge) {
-    badge.textContent = isAuton ? 'AUTON' : isPID ? 'PID' : 'DRIVER';
-    badge.style.background = isAuton ? 'rgba(34,197,94,0.25)' : isPID ? 'rgba(99,102,241,0.2)' : 'rgba(168,85,247,0.2)';
-    badge.style.color = isAuton ? '#22c55e' : isPID ? '#818cf8' : 'var(--gold)';
+    badge.textContent = isFreeRoam ? 'FREE ROAM' : isAuton ? 'AUTON' : isPID ? 'PID' : endgame ? 'ENDGAME' : 'DRIVER';
+    badge.style.background = isFreeRoam ? 'rgba(34,197,94,0.15)' : isAuton ? 'rgba(34,197,94,0.25)' : isPID ? 'rgba(99,102,241,0.2)' : endgame ? 'rgba(245,158,11,0.25)' : 'rgba(168,85,247,0.2)';
+    badge.style.color = isFreeRoam ? '#4ade80' : isAuton ? '#22c55e' : isPID ? '#818cf8' : endgame ? '#f59e0b' : 'var(--gold)';
+  }
+
+  // Score HUD overlay
+  set('simHudPlayer', String(SIM.score.player));
+  set('simHudOpp',    String(SIM.score.opponent));
+  set('simHudTimer',  timerStr);
+  const hudPeriod = document.getElementById('simHudPeriod');
+  if (hudPeriod) {
+    hudPeriod.textContent = isFreeRoam ? 'FREE ROAM' : endgame ? 'ENDGAME' : isAuton ? 'AUTON' : 'DRIVER';
+    hudPeriod.style.color = isFreeRoam ? '#4ade80' : endgame ? '#f59e0b' : 'var(--t3)';
+  }
+  const hudTimer = document.getElementById('simHudTimer');
+  if (hudTimer) hudTimer.style.color = isFreeRoam ? '#4ade80' : endgame ? '#ef4444' : 'var(--gold)';
+  const hudWave = document.getElementById('simHudWave');
+  if (hudWave) {
+    hudWave.style.display = SIM.ballWave.count > 1 ? '' : 'none';
+    hudWave.textContent = `· W${SIM.ballWave.count}`;
   }
 }
 
@@ -1574,8 +2250,10 @@ function annRenderMechanisms() {
         <select class="ann-input" oninput="_annMechanisms[${i}].type=this.value">
           <option value="intake"   ${m.type==='intake'  ?'selected':''}>Intake</option>
           <option value="conveyor" ${m.type==='conveyor'?'selected':''}>Conveyor</option>
+          <option value="hopper"   ${m.type==='hopper'  ?'selected':''}>Hopper</option>
           <option value="flywheel" ${m.type==='flywheel'?'selected':''}>Flywheel</option>
           <option value="arm"      ${m.type==='arm'     ?'selected':''}>Arm</option>
+          <option value="climb"    ${m.type==='climb'   ?'selected':''}>Climb</option>
           <option value="outtake"  ${m.type==='outtake' ?'selected':''}>Outtake</option>
         </select>
         <button class="ann-del" onclick="_annMechanisms.splice(${i},1);annRenderMechanisms()">✕</button>
@@ -2045,4 +2723,101 @@ function _showDiag(issues) {
     </div>`;
 
   modal.style.display = 'block';
+}
+
+// ─── TELEMETRY ────────────────────────────────────────────────────────────────
+
+function simCalcScore() {
+  // Hopper scoring: tracked in SIM.score by tickGameObjects when balls are sunk
+  return { player: SIM.score.player, opponent: SIM.score.opponent };
+}
+
+function simSnapshotState() {
+  const sc = simCalcScore();
+  return {
+    t:  +(SIM.match.elapsed.toFixed(2)),
+    p:  { x: +SIM.robot.x.toFixed(1), y: +SIM.robot.y.toFixed(1),
+          a: +SIM.robot.angle.toFixed(1), vx: +SIM.robot.vx.toFixed(1), vy: +SIM.robot.vy.toFixed(1) },
+    ai: SIM.aiRobots.map(r => ({ x: +r.x.toFixed(1), y: +r.y.toFixed(1), a: +r.angle.toFixed(1) })),
+    sc,
+  };
+}
+
+function simStartTelemetry() {
+  SIM.telemetry.buffer    = [];
+  SIM.telemetry.recording = true;
+  SIM.telemetry.sessionId = Date.now();
+  SIM.telemetry.mode      = SIM.match.mode;
+  SIM.telemetry._tick     = 0;
+}
+
+async function simFlushTelemetry() {
+  if (!SIM.telemetry.recording || !SIM.telemetry.buffer.length) return;
+  SIM.telemetry.recording = false;
+  if (!window.electronAPI?.simSaveTelemetry) return;
+  await window.electronAPI.simSaveTelemetry({
+    id:            SIM.telemetry.sessionId,
+    date:          new Date().toISOString(),
+    mode:          SIM.telemetry.mode,
+    maxRobotSpeed: DRIVE_SPEED,
+    frames:        SIM.telemetry.buffer,
+  });
+}
+
+// ─── ML CONTROL INTERFACE ─────────────────────────────────────────────────────
+// Each opponent AI can be switched to ML control by setting ai.mlAction = {leftV, rightV}.
+// The Python training loop drives this via WebSocket (see nexus_rl_env.py).
+
+function simApplyMLAction(ai) {
+  const { leftV = 0, rightV = 0 } = ai.mlAction;
+  const rad      = ai.angle * Math.PI / 180;
+  const fwdSpeed = (leftV + rightV) / 2 * DRIVE_SPEED;
+  const turnDegs = (rightV - leftV) / TRACK_WIDTH * DRIVE_SPEED * (180 / Math.PI);
+  const tVx  = Math.sin(rad) * fwdSpeed;
+  const tVy  = -Math.cos(rad) * fwdSpeed;
+
+  const linAlpha  = TICK_DT / (Math.abs(fwdSpeed) > 0.1 ? DRIVE_TAU : COAST_TAU);
+  const turnAlpha = TICK_DT / (Math.abs(turnDegs)  > 0.1 ? TURN_TAU  : COAST_TURN);
+  ai.vx    += (tVx      - ai.vx)    * linAlpha;
+  ai.vy    += (tVy      - ai.vy)    * linAlpha;
+  ai.omega += (turnDegs - ai.omega) * turnAlpha;
+
+  const spd = Math.sqrt(ai.vx ** 2 + ai.vy ** 2);
+  if (spd > DRIVE_SPEED) { ai.vx *= DRIVE_SPEED / spd; ai.vy *= DRIVE_SPEED / spd; }
+
+  const a = ai.angle * Math.PI / 180;
+  const cosA = Math.abs(Math.cos(a)), sinA = Math.abs(Math.sin(a));
+  const hw = 8, hx = hw * cosA + hw * sinA, hy = hw * sinA + hw * cosA;
+  let nx = ai.x + ai.vx * TICK_DT, ny = ai.y + ai.vy * TICK_DT;
+  if (nx < hx || nx > FIELD_IN - hx) { ai.vx = 0; nx = Math.max(hx, Math.min(FIELD_IN - hx, nx)); }
+  if (ny < hy || ny > FIELD_IN - hy) { ai.vy = 0; ny = Math.max(hy, Math.min(FIELD_IN - hy, ny)); }
+  ai.x = nx; ai.y = ny;
+  ai.angle += ai.omega * TICK_DT;
+}
+
+// Returns a 15-element normalized observation vector for the given AI opponent.
+// This is what the policy network sees each step.
+function simGetObservation(aiIdx) {
+  const ai = SIM.aiRobots[aiIdx];
+  if (!ai) return null;
+  const p = SIM.robot, F = FIELD_IN;
+
+  const balls = SIM.gameObjects
+    .filter(o => !o.scored)
+    .map(o => ({ dx: o.x - ai.x, dy: o.y - ai.y }))
+    .sort((a, b) => (a.dx ** 2 + a.dy ** 2) - (b.dx ** 2 + b.dy ** 2));
+  const b1 = balls[0] || { dx: 0, dy: 0 };
+  const b2 = balls[1] || { dx: 0, dy: 0 };
+
+  const aRad = ai.angle * Math.PI / 180;
+  return [
+    ai.x / F,                  ai.y / F,                   // position (normalized 0–1)
+    Math.sin(aRad),             Math.cos(aRad),             // heading as unit circle
+    ai.vx / DRIVE_SPEED,        ai.vy / DRIVE_SPEED,        // velocity
+    (p.x - ai.x) / F,          (p.y - ai.y) / F,           // player relative position
+    p.vx / DRIVE_SPEED,         p.vy / DRIVE_SPEED,         // player velocity
+    b1.dx / F,                  b1.dy / F,                  // nearest ball (relative)
+    b2.dx / F,                  b2.dy / F,                  // 2nd nearest ball
+    (SIM.match.duration - SIM.match.elapsed) / SIM.match.duration, // time remaining
+  ];
 }
