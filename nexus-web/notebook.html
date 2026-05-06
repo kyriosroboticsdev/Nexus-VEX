@@ -1254,8 +1254,6 @@ function nbRepaginateEntry(entryId, opts={}) {
     root.baseTitle = baseTitle;
     let newPageSources = nbPaginateSourceBlocks(root, sourceBlocks);
     let pageZoom;
-    // If content only slightly overflows into a second page, shrink it to fit on
-    // one page instead of creating a nearly-empty continuation page.
     if (newPageSources.length > 1) {
       const totalH = nbMeasureBlocksHeight(nbComposePageBlocks(root, 1, sourceBlocks));
       const needed = NB_PAGE_CONTENT_LIMIT / totalH;
@@ -3079,8 +3077,6 @@ function scrollToSection(s) {
 function exportPDF() {
   if (!NB.entries.length) { alert('No entries to export.'); return; }
 
-  // In Electron — delegate to a dedicated hidden print window via printToPDF().
-  // window.print() / f.contentWindow.print() don't work reliably inside iframes.
   if (window.electronAPI?.nbSavePDF) {
     window.electronAPI.nbSavePDF();
     return;
@@ -3575,40 +3571,6 @@ window.addEventListener('message', e => {
     nbHandleTeamContextChange(prevKey);
   }
 });
-
-// ─── PRINT MODE ──────────────────────────────────────────────────────────────
-// When loaded by nb:savePDF in a hidden BrowserWindow, build the print
-// container and signal the main process that printToPDF() can proceed.
-if (new URLSearchParams(location.search).get('nbPrintMode') === '1') {
-  setTimeout(() => {
-    const container = document.createElement('div');
-    container.id = 'nbPrintAll';
-    NB.entries.forEach((entry, globalIdx) => {
-      const z = entry._zoom;
-      const blocksHtml = renderBlocks(entry);
-      const pageDiv = document.createElement('div');
-      pageDiv.className = 'nb-page';
-      pageDiv.innerHTML = (z ? `<div style="zoom:${z}">` : '') + blocksHtml + (z ? '</div>' : '')
-        + `<div class="nb-page-footer">Page ${globalIdx + 1} of ${NB.entries.length}</div>`
-        + `<div class="nb-page-label">${nbGetEntryTypeLabel(entry.type)}</div>`;
-      container.appendChild(pageDiv);
-    });
-    document.body.appendChild(container);
-    container.querySelectorAll('textarea').forEach(ta => {
-      const div = document.createElement('div');
-      div.textContent = ta.value;
-      div.className = ta.className;
-      div.setAttribute('style', ta.getAttribute('style') || '');
-      div.style.whiteSpace = 'pre-wrap';
-      div.style.wordBreak = 'break-word';
-      div.style.height = 'auto';
-      div.style.overflow = 'visible';
-      div.style.resize = 'none';
-      ta.parentNode.replaceChild(div, ta);
-    });
-    if (window.electronAPI?.nbPrintReady) window.electronAPI.nbPrintReady();
-  }, 200);
-}
 </script>
 </body>
 </html>

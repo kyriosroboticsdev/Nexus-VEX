@@ -707,11 +707,6 @@ input[type=range]{width:100%;accent-color:var(--gold);}
   <script>
   // Proxy window.electronAPI calls from the notebook iframe (preloads don't run in iframes).
   window.addEventListener('message', async e => {
-    if (e.data?.type === 'nb-print-request') {
-      const f = document.getElementById('notebookFrame');
-      if (f?.contentWindow) f.contentWindow.print();
-      return;
-    }
     if (e.data?.type !== 'nb-api-req' || !window.electronAPI) return;
     const { id, method, args } = e.data;
     try {

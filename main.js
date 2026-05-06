@@ -455,6 +455,11 @@ ipcMain.handle('google-auth', async (event, authUrl) => {
       tryExtract(url);
     });
 
+    // Fallback: read the URL from the renderer after page load (catches JS-driven redirects)
+    authWin.webContents.on('did-finish-load', () => {
+      authWin.webContents.executeJavaScript('location.href').then(url => tryExtract(url)).catch(() => {});
+    });
+
     authWin.on('closed', () => {
       reject(new Error('closed'));
     });

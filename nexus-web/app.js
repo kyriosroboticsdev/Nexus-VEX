@@ -16,14 +16,7 @@ const setN=(m,t,d)=>{S.notes[nk(m,t)]=d;sn2();};
 // ─── GOOGLE AUTH ──────────────────────────────────────────────────────────────
 let currentUser=null;
 window.currentUser=null;
-async function initGoogleAuth(){
-  renderAuthBar(null);
-  const token=localStorage.getItem('gToken');
-  if(token){
-    try{await fetchGoogleUser(token);}
-    catch(e){localStorage.removeItem('gToken');renderAuthBar(null);}
-  }
-}
+function initGoogleAuth(){renderAuthBar(null);}
 async function signInGoogle(){
   const evIn=document.getElementById('evIn');
   const sku=(evIn&&evIn.closest('#scoutPage')?.style.display!=='none')?evIn.value:'';
@@ -56,9 +49,7 @@ async function checkAuthRedirect(){
 async function fetchGoogleUser(token){
   try{
     const res=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+token}});
-    if(!res.ok)throw new Error('Token invalid or expired ('+res.status+')');
     const u=await res.json();
-    if(!u.sub)throw new Error('Invalid user info response');
     currentUser={uid:u.sub,displayName:u.name,email:u.email,photoURL:u.picture,accessToken:token};
     window.currentUser=currentUser;
     localStorage.setItem('gToken',token);
