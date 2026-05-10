@@ -383,6 +383,17 @@ body.nb-view-mode>*:not(#nbViewerWrap){display:none!important;}
 #nbViewerPages .table-col-del,#nbViewerPages .cad-controls{display:none!important;}
 #nbViewerPages textarea{pointer-events:none!important;resize:none!important;}
 #nbViewerLoading{padding:80px;text-align:center;color:var(--t2);font-size:16px;}
+/* ── COVER PAGE — editor + view mode ── */
+.nb-page.nb-page-cover{padding:0!important;overflow:hidden!important;height:1056px!important;}
+.nb-page.nb-page-cover .nb-block{display:none!important;}
+.nb-page.nb-page-cover .nb-block:has(.block-img-loaded){display:block!important;position:absolute!important;inset:0!important;margin:0!important;padding:0!important;border:none!important;}
+.nb-page.nb-page-cover .block-img-center{display:block!important;height:100%!important;}
+.nb-page.nb-page-cover .block-img-loaded{max-height:none!important;width:816px!important;height:1056px!important;border-radius:0!important;resize:none!important;}
+.nb-page.nb-page-cover .block-img-loaded img{width:816px!important;height:1056px!important;max-height:none!important;max-width:none!important;object-fit:cover!important;border-radius:0!important;}
+.nb-page.nb-page-cover .nb-block:has(.block-img-loaded) .block-del{display:flex!important;z-index:10;}
+.nb-page.nb-page-cover .nb-block:has(.block-img-loaded) .block-handle{display:flex!important;z-index:10;}
+.nb-page.nb-page-cover:not(:has(.block-img-loaded)){display:flex!important;align-items:center!important;justify-content:center!important;}
+.nb-page.nb-page-cover:not(:has(.block-img-loaded))::after{content:'Add an Image block for your cover page';color:#bbb;font-size:15px;font-family:'Barlow',sans-serif;pointer-events:none;}
 </style>
 </head>
 <body>
@@ -1622,11 +1633,12 @@ function renderEditor(entry) {
   const pageTotal = chain.length || 1;
   const typeLabel = nbGetEntryTypeLabel(entry.type);
   const area = document.getElementById('editorArea');
+  const isCoverPage = NB.entries[0]?.id === entry.id && (!entry.pageIndex || entry.pageIndex === 1);
   const _z = entry._zoom;
   const _blocks = renderBlocks(entry);
   area.innerHTML = `
     <div class="page-canvas">
-      <div class="nb-page" id="nbPage" style="position:relative;"
+      <div class="nb-page${isCoverPage ? ' nb-page-cover' : ''}" id="nbPage" style="position:relative;"
         ondragover="nbPageDragOver(event)"
         ondragleave="nbPageDragLeave(event)"
         ondrop="nbPageDrop(event)">
