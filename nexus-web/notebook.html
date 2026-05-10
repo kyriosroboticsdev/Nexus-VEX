@@ -855,7 +855,7 @@ const NB = {
   entries: [],
   designCycles: [],
   meetings: [],
-  config: { team:'', name:'', season:'2026–2027 Override', program:'VRC', publishUrl:'' },
+  config: { team:'', name:'', season:'2026–2027 Override', program:'VRC', publishUrl:'https://nexus-compile-server.onrender.com' },
   selEntry: null,
   clipboard: null,
   sync: {
@@ -3542,8 +3542,7 @@ function loadConfig() {
   const p = document.getElementById('cfgProgram'); if (p) p.value = NB.config.program;
   const u = document.getElementById('cfgPublishUrl');
   if (u) {
-    // Auto-fill with current origin on web; leave blank in Electron so user enters Railway URL
-    if (!NB.config.publishUrl && location.protocol !== 'file:') NB.config.publishUrl = location.origin;
+    if (!NB.config.publishUrl) NB.config.publishUrl = 'https://nexus-compile-server.onrender.com';
     u.value = NB.config.publishUrl;
   }
   document.getElementById('teamLabel').textContent = [NB.config.team, NB.config.name].filter(Boolean).join(' — ') || 'Engineering Notebook';
@@ -3708,8 +3707,8 @@ async function doPublish() {
   status.textContent = 'Sending notebook to server…';
   status.style.color = 'var(--t2)';
 
-  // Resolve server base: prefer explicit config, fall back to current origin on web
-  const serverBase = NB.config.publishUrl || (location.protocol !== 'file:' ? location.origin : '');
+  // Resolve server base: prefer explicit config, fall back to hardcoded Render URL
+  const serverBase = (NB.config.publishUrl || 'https://nexus-compile-server.onrender.com').replace(/\/+$/, '');
   if (!serverBase) {
     status.textContent = 'Enter your Railway server URL in Notebook Settings → Publish Server URL first.';
     status.style.color = '#ff7b77';
@@ -3769,7 +3768,8 @@ function copyPublishUrl() {
 
   let data;
   try {
-    const res = await fetch(location.origin + '/nb/data/' + encodeURIComponent(teamCode));
+    const serverBase = NB.config.publishUrl || 'https://nexus-compile-server.onrender.com';
+    const res = await fetch(serverBase + '/nb/data/' + encodeURIComponent(teamCode));
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.error || res.statusText);
