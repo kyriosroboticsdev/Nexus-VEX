@@ -3685,6 +3685,62 @@ document.addEventListener('mouseup', () => {
   document.querySelectorAll('.block-img-loaded').forEach(el => saveImgSize(el));
 });
 
+// ─── ELECTRON PDF PRINT MODE ─────────────────────────────────────────────────
+// main.js opens a hidden BrowserWindow with ?nbPrintMode=1, builds the full
+// print container here, then calls nbPrintReady() so main can call printToPDF.
+(function () {
+  if (new URLSearchParams(window.location.search).get('nbPrintMode') !== '1') return;
+
+  setTimeout(() => {
+    clearTimeout(NB.pagination.timer);
+    NB.pagination.timer = null;
+
+    const roots = [...new Set(NB.entries.map(e => e.rootEntryId || e.id))];
+    roots.forEach(rootId => { try { nbRepaginateEntry(rootId, { skipRemote: true }); } catch (_) {} });
+
+    const totalPages = NB.entries.length;
+    const container = document.createElement('div');
+    container.id = 'nbPrintAll';
+    NB.entries.forEach((entry, globalIdx) => {
+      const typeLabel = nbGetEntryTypeLabel(entry.type);
+      const z = entry._zoom;
+      const pageDiv = document.createElement('div');
+      pageDiv.className = 'nb-page' + (globalIdx === 0 ? ' nb-page-cover' : '');
+      pageDiv.innerHTML = `<div class="nb-print-content">${(z ? `<div style="zoom:${z}">` : '') + renderBlocks(entry) + (z ? '</div>' : '')}</div>`
+        + `<div class="nb-page-footer">Page ${globalIdx + 1} of ${totalPages}</div>`
+        + `<div class="nb-page-label">${typeLabel}</div>`;
+      container.appendChild(pageDiv);
+    });
+    document.body.appendChild(container);
+
+    container.querySelectorAll('textarea').forEach(ta => {
+      const div = document.createElement('div');
+      div.textContent = ta.value;
+      div.className = ta.className;
+      div.setAttribute('style', ta.getAttribute('style') || '');
+      div.style.cssText += ';white-space:pre-wrap;word-break:break-word;height:auto;overflow:visible;resize:none;';
+      ta.parentNode.replaceChild(div, ta);
+    });
+
+    const IMG_MAX_H = 400;
+    container.querySelectorAll('.block-img-loaded img').forEach(img => {
+      if (img.closest('.nb-page-cover')) return;
+      img.style.maxHeight = IMG_MAX_H + 'px';
+      img.style.width = 'auto'; img.style.maxWidth = '100%'; img.style.height = 'auto';
+    });
+
+    const PAGE_CONTENT_H = 1056 - 56 - 56;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      container.querySelectorAll('.nb-print-content').forEach(el => {
+        if (el.closest('.nb-page-cover')) return;
+        if (el.scrollHeight > PAGE_CONTENT_H)
+          el.style.zoom = (PAGE_CONTENT_H / el.scrollHeight).toFixed(4);
+      });
+      window.electronAPI?.nbPrintReady();
+    }));
+  }, 600);
+})();
+
 // ─── PUBLISH TO WEB ──────────────────────────────────────────────────────────
 function publishToWeb() {
   if (!NB.entries.length) { alert('No entries to publish.'); return; }
@@ -3764,7 +3820,7 @@ function copyPublishUrl() {
   }
 
   vhTeam.textContent = teamCode;
-  vhInfo.textContent  = 'Loading…';
+  vhInfo.textContent  = 'Loading… (first load may take up to 60s)';
 
   let data;
   try {
