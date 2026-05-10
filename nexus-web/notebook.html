@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="./docx.js"></script>
 <script>
 // Electron preloads don't run in iframes. If window.electronAPI is missing,
 // set up a postMessage bridge that tunnels IPC calls through the parent window.
@@ -142,8 +143,9 @@ body{background:var(--s0);color:var(--t1);font-family:var(--fb);font-size:14px;l
 .nb-block .block-del{position:absolute;top:-1px;right:-28px;width:22px;height:22px;background:rgba(232,48,42,0.15);border:1px solid rgba(232,48,42,0.3);border-radius:4px;display:none;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:#ff7b77;}
 .nb-block:hover .block-del{display:flex;}
 .nb-block.selected .block-del{display:flex;}
-.block-img-loaded{position:relative;display:block;margin:0 auto;max-width:100%;resize:horizontal;overflow:hidden;min-width:80px;cursor:default;}
-.block-img-loaded img{display:block;width:100%;border-radius:4px;}
+.block-img-center{display:flex;justify-content:center;}
+.block-img-loaded{position:relative;display:block;max-width:100%;resize:horizontal;overflow:hidden;min-width:80px;cursor:default;}
+.block-img-loaded img{display:block;width:100%;max-height:400px;object-fit:contain;border-radius:4px;}
 .block-img-change{position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.65);color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;opacity:0;transition:opacity 0.15s;user-select:none;}
 .block-img-loaded:hover .block-img-change{opacity:1;}
 
@@ -364,6 +366,23 @@ body{background:var(--s0);color:var(--t1);font-family:var(--fb);font-size:14px;l
 /* PAGE FOOTER (inside nb-page) */
 .nb-page-footer{position:absolute;bottom:22px;right:30px;font-size:10px;color:#bbb;font-family:'JetBrains Mono',monospace;letter-spacing:0.04em;pointer-events:none;}
 .nb-page-label{position:absolute;top:20px;right:30px;font-size:9px;font-weight:700;letter-spacing:0.12em;color:#ccc;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;pointer-events:none;}
+/* ── VIEW MODE ── */
+#nbViewerWrap{display:none;position:fixed;inset:0;background:#0a0a0f;z-index:9999;overflow-y:auto;}
+body.nb-view-mode #nbViewerWrap{display:block;}
+body.nb-view-mode>*:not(#nbViewerWrap){display:none!important;}
+#nbViewerHeader{position:sticky;top:0;background:#0e0e13;border-bottom:1px solid rgba(255,255,255,0.07);padding:10px 24px;display:flex;align-items:center;gap:12px;z-index:10;}
+.vh-badge{background:var(--gold);color:#fff;border-radius:4px;padding:2px 9px;font-size:11px;font-weight:700;letter-spacing:0.05em;flex-shrink:0;}
+.vh-team{font-family:var(--fd);font-weight:900;font-size:19px;color:#fff;}
+.vh-info{font-size:12px;color:var(--t2);}
+.vh-nexus{margin-left:auto;font-size:11px;color:var(--t3);font-family:var(--fd);font-weight:700;letter-spacing:0.08em;}
+#nbViewerPages{display:flex;flex-direction:column;align-items:center;padding:28px 0 60px;gap:16px;}
+#nbViewerPages .nb-page{pointer-events:none;user-select:text;box-shadow:0 6px 40px rgba(0,0,0,0.6);border-radius:2px;cursor:default;}
+#nbViewerPages .nb-block{cursor:default!important;}
+#nbViewerPages .nb-block-toolbar,#nbViewerPages .block-handle,#nbViewerPages .block-del,
+#nbViewerPages .block-img-change,#nbViewerPages .table-add-row,#nbViewerPages .table-col-add,
+#nbViewerPages .table-col-del,#nbViewerPages .cad-controls{display:none!important;}
+#nbViewerPages textarea{pointer-events:none!important;resize:none!important;}
+#nbViewerLoading{padding:80px;text-align:center;color:var(--t2);font-size:16px;}
 </style>
 </head>
 <body>
@@ -586,9 +605,13 @@ body{background:var(--s0);color:var(--t1);font-family:var(--fb);font-size:14px;l
           <div class="export-ico"></div>
           <div><div class="export-label">Export as PDF</div><div class="export-sub">Print-ready, preserves all page formatting. Best for judges.</div></div>
         </div>
-        <div class="export-opt" onclick="exportGoogleDocs()">
+        <div class="export-opt" onclick="exportDOCX()">
           <div class="export-ico"></div>
-          <div><div class="export-label">Export to Google Docs</div><div class="export-sub">Creates a Google Doc from your entries. Requires Google sign-in.</div></div>
+          <div><div class="export-label">Export as Word / Google Docs (.docx)</div><div class="export-sub">Download a .docx file — upload to Google Drive to open and edit as a Google Doc.</div></div>
+        </div>
+        <div class="export-opt" onclick="publishToWeb()">
+          <div class="export-ico"></div>
+          <div><div class="export-label">Publish Live View URL</div><div class="export-sub">Push your notebook to a permanent public link — always up-to-date, no login needed for viewers.</div></div>
         </div>
         <div class="export-opt" onclick="exportMarkdown()">
           <div class="export-ico"></div>
@@ -614,6 +637,7 @@ body{background:var(--s0);color:var(--t1);font-family:var(--fb);font-size:14px;l
                 <option>VRC</option><option>VEXU</option><option>VEX IQ</option>
               </select>
             </div>
+            <div style="grid-column:1/-1;"><label style="font-size:11px;color:var(--t3);display:block;margin-bottom:3px;">Publish Server URL <span style="color:var(--t3);font-weight:400;">(your Railway URL — required to Publish from the desktop app)</span></label><input id="cfgPublishUrl" class="modal-input" placeholder="https://your-app.railway.app" oninput="saveConfig()"/></div>
           </div>
         </div>
       </div></div>
@@ -646,11 +670,11 @@ body{background:var(--s0);color:var(--t1);font-family:var(--fb);font-size:14px;l
   </div>
 </div>
 
-<!-- GOOGLE DOCS EXPORT DONE MODAL -->
+<!-- DOCX EXPORT DONE MODAL -->
 <div class="modal" id="gdocsExportModal">
   <div class="modal-box">
-    <div class="modal-title">📄 Open in Google Docs</div>
-    <div style="font-size:13px;color:var(--t2);margin-bottom:16px;">Your notebook has been downloaded as <code style="background:var(--s4);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:12px;">notebook.html</code>. Follow these steps to open it as a Google Doc:</div>
+    <div class="modal-title">Word Doc Downloaded</div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:16px;">Your notebook has been downloaded as a <code style="background:var(--s4);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:12px;">.docx</code> file. To open it in Google Docs:</div>
     <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:6px;">
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;">
         <span style="background:var(--gold);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;">1</span>
@@ -658,21 +682,44 @@ body{background:var(--s0);color:var(--t1);font-family:var(--fb);font-size:14px;l
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;">
         <span style="background:var(--gold);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;">2</span>
-        <span>Upload <strong style="color:var(--t1);">notebook.html</strong> from your Downloads folder</span>
+        <span>Upload the <strong style="color:var(--t1);">.docx</strong> file from your Downloads folder</span>
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;">
         <span style="background:var(--gold);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;">3</span>
-        <span>Right-click the uploaded file → <strong style="color:var(--t1);">Open with → Google Docs</strong></span>
+        <span>Double-click it in Drive — it opens natively as a Google Doc, fully editable</span>
       </div>
       <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;">
         <span style="background:var(--gold);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;">4</span>
-        <span>Google Docs will convert it — all headings, tables, images and colors are preserved.</span>
+        <span>All headings, tables, images, and entry page breaks are preserved</span>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--t3);margin-top:10px;">Tip: you can also rename the file to <em>notebook.docx</em> if you'd prefer to open it in Microsoft Word first.</div>
+    <div style="font-size:11px;color:var(--t3);margin-top:10px;">Tip: the file also opens in Microsoft Word if needed.</div>
     <div class="modal-footer">
       <button class="btn-o" onclick="closeModal('gdocsExportModal')">Close</button>
       <button class="btn-g" onclick="window.electronAPI?.openExternal('https://drive.google.com');closeModal('gdocsExportModal')">Open Drive ↗</button>
+    </div>
+  </div>
+</div>
+
+<!-- PUBLISH TO WEB MODAL -->
+<div class="modal" id="publishModal">
+  <div class="modal-box">
+    <div class="modal-title">Publish Live View URL</div>
+    <div id="publishBody">
+      <div style="font-size:13px;color:var(--t2);margin-bottom:14px;">Your notebook will be published to a public URL. Anyone with the link can view it — no login required. Push again any time to update it.</div>
+      <div id="publishStatus" style="font-size:12px;color:var(--t2);min-height:18px;margin-bottom:4px;"></div>
+    </div>
+    <div id="publishResult" style="display:none;">
+      <div style="font-size:13px;color:var(--t2);margin-bottom:10px;">Your notebook is live! Share this URL with judges:</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">
+        <input id="publishUrlInput" class="modal-input" readonly style="flex:1;font-size:11px;font-family:'JetBrains Mono',monospace;" onclick="this.select()"/>
+        <button class="btn-g" style="flex-shrink:0;" onclick="copyPublishUrl()">Copy</button>
+      </div>
+      <div style="font-size:11px;color:var(--t3);">Publish again after making changes to keep the live view current.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-o" onclick="closeModal('publishModal')">Close</button>
+      <button class="btn-g" id="publishBtn" onclick="doPublish()">Publish</button>
     </div>
   </div>
 </div>
@@ -808,7 +855,7 @@ const NB = {
   entries: [],
   designCycles: [],
   meetings: [],
-  config: { team:'', name:'', season:'2026–2027 Override', program:'VRC' },
+  config: { team:'', name:'', season:'2026–2027 Override', program:'VRC', publishUrl:'' },
   selEntry: null,
   clipboard: null,
   sync: {
@@ -1666,11 +1713,11 @@ function blockInner(block) {
       </div>`;
     case 'image':
       if (d.src) {
-        return `<div class="block-img-loaded" style="width:${d.width||'100%'};">
+        return `<div class="block-img-center"><div class="block-img-loaded" style="width:${d.width||'100%'};">
           <img src="${d.src}" draggable="false"/>
           <div class="block-img-change" onclick="event.stopPropagation();this.nextElementSibling.click()">Change</div>
           <input type="file" accept="image/*" style="display:none;" onchange="loadImg(event,this)"/>
-        </div>`;
+        </div></div>`;
       }
       return `<div class="block-img-placeholder" onclick="triggerImgUpload(this)">
         <span style="font-size:24px;color:#aaa;">+</span><span>Click to upload image</span>
@@ -3082,13 +3129,11 @@ function exportPDF() {
     return;
   }
 
-  // Flush any pending repagination so NB.entries is fully up to date
-  if (NB.pagination.timer) {
-    clearTimeout(NB.pagination.timer);
-    NB.pagination.timer = null;
-    const roots = [...new Set(NB.entries.map(e => e.rootEntryId || e.id))];
-    roots.forEach(rootId => { if (!NB.pagination.running) nbRepaginateEntry(rootId, { skipRemote: true }); });
-  }
+  // Always repaginate synchronously before export so NB.entries is fresh
+  clearTimeout(NB.pagination.timer);
+  NB.pagination.timer = null;
+  const roots = [...new Set(NB.entries.map(e => e.rootEntryId || e.id))];
+  roots.forEach(rootId => { try { nbRepaginateEntry(rootId, { skipRemote: true }); } catch(e) {} });
 
   // Build a standalone print container with every paginated page in order
   const container = document.createElement('div');
@@ -3101,8 +3146,9 @@ function exportPDF() {
     const blocksHtml = renderBlocks(entry);
 
     const pageDiv = document.createElement('div');
-    pageDiv.className = 'nb-page';
-    pageDiv.innerHTML = (z ? `<div style="zoom:${z}">` : '') + blocksHtml + (z ? '</div>' : '')
+    pageDiv.className = 'nb-page' + (globalIdx === 0 ? ' nb-page-cover' : '');
+    // nb-print-content wraps all flow blocks so we can scale just them to fit
+    pageDiv.innerHTML = `<div class="nb-print-content">${(z ? `<div style="zoom:${z}">` : '') + blocksHtml + (z ? '</div>' : '')}</div>`
       + `<div class="nb-page-footer">Page ${globalIdx + 1} of ${totalPages}</div>`
       + `<div class="nb-page-label">${typeLabel}</div>`;
     container.appendChild(pageDiv);
@@ -3122,6 +3168,23 @@ function exportPDF() {
     div.style.overflow = 'visible';
     div.style.resize = 'none';
     ta.parentNode.replaceChild(div, ta);
+  });
+
+  // Pass 1: constrain images to 400px tall. Cover page excluded — image is full-bleed there.
+  const IMG_MAX_H = 400;
+  container.querySelectorAll('.block-img-loaded img').forEach(img => {
+    if (img.closest('.nb-page-cover')) return;
+    img.style.maxHeight = IMG_MAX_H + 'px';
+    img.style.width = 'auto';
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+  });
+
+  // Pass 2: zoom any still-overflowing pages. Cover page excluded.
+  const PAGE_CONTENT_H = 1056 - 56 - 56;
+  container.querySelectorAll('.nb-print-content').forEach(el => {
+    if (el.closest('.nb-page-cover')) return;
+    if (el.scrollHeight > PAGE_CONTENT_H) el.style.zoom = (PAGE_CONTENT_H / el.scrollHeight).toFixed(4);
   });
 
   window.addEventListener('afterprint', () => container.remove(), { once: true });
@@ -3184,12 +3247,98 @@ function doImportJSON(e) {
   e.target.value = '';
 }
 
-function exportGoogleDocs() {
+async function exportDOCX() {
   if (!NB.entries.length) { alert('No entries to export.'); return; }
+  if (!window.docx) { alert('DOCX library is still loading — please wait a moment and try again.'); return; }
+  const { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
+          HeadingLevel, AlignmentType, WidthType, BorderStyle, ShadingType, convertInchesToTwip } = window.docx;
 
-  const team   = NB.config.team   || 'VEX Team';
-  const season = NB.config.season || '';
-  const prog   = NB.config.program || 'VRC';
+  function srcToBytes(src) { const bin = atob(src.split(',')[1]); const out = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
+  function srcToType(src) { const m = src.match(/data:image\/(\w+);/); const t = (m?m[1]:'png').toLowerCase(); return t==='jpeg'?'jpg':t==='svg+xml'?'svg':t; }
+  function imgDims(src) { return new Promise(resolve => { const img = new Image(); const MAX=620; img.onload=()=>{ const scale=Math.min(1,MAX/img.naturalWidth); resolve({w:Math.round(img.naturalWidth*scale),h:Math.round(img.naturalHeight*scale)}); }; img.onerror=()=>resolve({w:MAX,h:Math.round(MAX*0.6)}); img.src=src; }); }
+  function sep(after=80) { return new Paragraph({children:[new TextRun({text:''})],spacing:{after}}); }
+
+  const rootEntries = NB.entries.filter(e => (e.pageIndex||1) === 1);
+  const allChildren = [];
+
+  for (let ei=0; ei<rootEntries.length; ei++) {
+    const root = rootEntries[ei];
+    const blocks = nbGetChainSourceBlocks(nbGetEntryChain(root.id));
+    if (ei > 0) allChildren.push(new Paragraph({pageBreakBefore:true, children:[new TextRun({text:''})]}));
+
+    const metaParts = [nbGetEntryTypeLabel(root.type).toUpperCase()];
+    if (root.date) metaParts.push(root.date);
+    if (root.author) metaParts.push(root.author);
+    allChildren.push(new Paragraph({children:[new TextRun({text:metaParts.join('   ·   '),bold:true,size:16,color:'999999'})],spacing:{after:60}}));
+
+    for (const block of blocks) {
+      const d = block.data || {};
+      switch (block.type) {
+        case 'title': allChildren.push(new Paragraph({text:d.text||'',heading:HeadingLevel.HEADING_1})); break;
+        case 'subtitle': allChildren.push(new Paragraph({text:d.text||'',heading:HeadingLevel.HEADING_2})); break;
+        case 'text': for (const line of (d.text||'').split('\n')) allChildren.push(new Paragraph({children:[new TextRun({text:line})],spacing:{after:60}})); break;
+        case 'divider': allChildren.push(new Paragraph({border:{bottom:{color:'C0C0C0',style:BorderStyle.SINGLE,size:6,space:4}},spacing:{before:80,after:80},children:[]})); break;
+        case 'date-row': {
+          const entryNum = ei + 1;
+          const col3 = [3216,3216,3216];
+          allChildren.push(new Table({width:{size:100,type:WidthType.PERCENTAGE},columnWidths:col3,rows:[
+            new TableRow({tableHeader:true,children:['Date','Entry #','Author'].map(label=>new TableCell({shading:{type:ShadingType.SOLID,color:'E8E8F0',fill:'E8E8F0'},children:[new Paragraph({children:[new TextRun({text:label,bold:true,size:18,color:'444444'})]})]}))}) ,
+            new TableRow({children:[d.date||'',String(entryNum),d.author||''].map(val=>new TableCell({children:[new Paragraph({children:[new TextRun({text:val})]})]}))})
+          ]}));
+          allChildren.push(sep()); break;
+        }
+        case 'sig': {
+          const col3s=[3216,3216,3216];
+          allChildren.push(new Table({width:{size:100,type:WidthType.PERCENTAGE},columnWidths:col3s,rows:[
+            new TableRow({tableHeader:true,children:['Student','Mentor','Date'].map(label=>new TableCell({shading:{type:ShadingType.SOLID,color:'E8E8F0',fill:'E8E8F0'},children:[new Paragraph({children:[new TextRun({text:label,bold:true,size:18,color:'444444'})]})]}))}) ,
+            new TableRow({children:[d.student||'',d.mentor||'',d.sigdate||''].map(val=>new TableCell({children:[new Paragraph({children:[new TextRun({text:val})]})]}))})
+          ]}));
+          allChildren.push(sep()); break;
+        }
+        case 'image':
+          if (d.src && d.src.startsWith('data:')) {
+            const type=srcToType(d.src);
+            if (['png','jpg','gif','bmp'].includes(type)) {
+              try { const {w,h}=await imgDims(d.src); allChildren.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:80,after:80},children:[new ImageRun({data:srcToBytes(d.src),transformation:{width:w,height:h},type})]})); }
+              catch(_) { allChildren.push(new Paragraph({children:[new TextRun({text:'[Image — could not embed]',italics:true,color:'888888'})]})); }
+            } else allChildren.push(new Paragraph({children:[new TextRun({text:'[Image — format not supported in DOCX]',italics:true,color:'888888'})]}));
+          } break;
+        case 'table': {
+          const headers=d.headers||[]; const rows=d.rows||[];
+          const numCols=headers.length||(rows[0]?.length??1);
+          const colW=Math.floor(9648/numCols); const colWidths=Array(numCols).fill(colW);
+          const tableRows=[];
+          if (headers.length) tableRows.push(new TableRow({tableHeader:true,children:headers.map(h=>new TableCell({shading:{type:ShadingType.SOLID,color:'E8E8F0',fill:'E8E8F0'},children:[new Paragraph({children:[new TextRun({text:h,bold:true,color:'333333'})]})]}))}) );
+          for (const row of rows) tableRows.push(new TableRow({children:(Array.isArray(row)?row:[]).map(cell=>new TableCell({children:[new Paragraph({children:[new TextRun({text:String(cell??'')})]})]}))}) );
+          if (tableRows.length) { allChildren.push(new Table({rows:tableRows,width:{size:100,type:WidthType.PERCENTAGE},columnWidths:colWidths})); allChildren.push(sep()); }
+          break;
+        }
+        case 'header-box':
+          allChildren.push(new Table({width:{size:100,type:WidthType.PERCENTAGE},columnWidths:[9648],rows:[new TableRow({children:[new TableCell({shading:{type:ShadingType.SOLID,color:'1A0030',fill:'1A0030'},children:[new Paragraph({spacing:{before:120,after:120},children:[new TextRun({text:d.team||NB.config.team||'',bold:true,size:32,color:'FFFFFF'}), ...(d.event?[new TextRun({text:'   ·   '+d.event,size:22,color:'CCCCCC'})]:[])]})]})]})] }));
+          allChildren.push(sep(60)); break;
+        case 'rule': allChildren.push(new Paragraph({spacing:{before:60,after:60},children:[...(d.section?[new TextRun({text:'['+d.section+']  ',bold:true,size:18,color:'777777'})]:[]),...(d.id?[new TextRun({text:d.id+' — ',bold:true})]:[]),new TextRun({text:(d.text||'').split('\n')[0]||''}), ...((d.text||'').includes('\n')?[new TextRun({text:'  '+(d.text||'').split('\n').slice(1).join(' '),italics:true,color:'555555'})]:[])]})); break;
+        case 'cad': allChildren.push(new Paragraph({children:[new TextRun({text:'[3D Model: '+(d.stlName||'model.stl')+' — open in Nexus to view]',italics:true,color:'888888'})]})); break;
+      }
+    }
+  }
+
+  const doc = new Document({
+    styles:{default:{heading1:{run:{size:48,bold:true,color:'111111'},paragraph:{spacing:{before:320,after:160}}},heading2:{run:{size:32,bold:true,color:'333333'},paragraph:{spacing:{before:200,after:100}}},document:{run:{size:22},paragraph:{spacing:{after:80}}}}},
+    sections:[{properties:{page:{size:{width:convertInchesToTwip(8.5),height:convertInchesToTwip(11)},margin:{top:convertInchesToTwip(0.9),right:convertInchesToTwip(0.9),bottom:convertInchesToTwip(0.9),left:convertInchesToTwip(0.9)}}},children:allChildren}]
+  });
+
+  const blob = await Packer.toBlob(doc);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = ((NB.config.team||'Nexus')+'-Notebook').replace(/[^a-z0-9_\-]/gi,'_')+'.docx';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  document.getElementById('gdocsExportModal').classList.add('open');
+}
+
+function _stub_exportGoogleDocs_unused() {
+  // dead code — kept to avoid removing the closing brace below
+  const team = '', season = '', prog = '';
 
   // Type → accent color map (matches the app's palette)
   const TYPE_COLOR = { design:'#a855f7', build:'#1a7ddf', test:'#22c55e', meeting:'#f59e0b' };
@@ -3377,6 +3526,7 @@ function saveConfig() {
   NB.config.name = document.getElementById('cfgName')?.value || '';
   NB.config.season = document.getElementById('cfgSeason')?.value || '';
   NB.config.program = document.getElementById('cfgProgram')?.value || 'VRC';
+  NB.config.publishUrl = (document.getElementById('cfgPublishUrl')?.value || '').replace(/\/+$/, '');
   document.getElementById('teamLabel').textContent = [NB.config.team, NB.config.name].filter(Boolean).join(' — ') || 'Engineering Notebook';
   nbHandleTeamContextChange(prevKey);
 }
@@ -3390,6 +3540,12 @@ function loadConfig() {
   const n = document.getElementById('cfgName'); if (n) n.value = NB.config.name;
   const s = document.getElementById('cfgSeason'); if (s) s.value = NB.config.season;
   const p = document.getElementById('cfgProgram'); if (p) p.value = NB.config.program;
+  const u = document.getElementById('cfgPublishUrl');
+  if (u) {
+    // Auto-fill with current origin on web; leave blank in Electron so user enters Railway URL
+    if (!NB.config.publishUrl && location.protocol !== 'file:') NB.config.publishUrl = location.origin;
+    u.value = NB.config.publishUrl;
+  }
   document.getElementById('teamLabel').textContent = [NB.config.team, NB.config.name].filter(Boolean).join(' — ') || 'Engineering Notebook';
 }
 
@@ -3450,7 +3606,17 @@ printStyle.textContent = `
 
   /* Images: respect saved resize width, but never overflow the page */
   #nbPrintAll .block-img-loaded { max-width: 100% !important; resize: none !important; }
-  #nbPrintAll .block-img-loaded img { width: 100% !important; }
+  #nbPrintAll .block-img-loaded img { max-height: 400px !important; max-width: 100% !important; width: auto !important; height: auto !important; }
+
+  /* Cover page (first page): full-bleed image, no padding, hide other blocks */
+  #nbPrintAll .nb-page-cover { padding: 0 !important; overflow: hidden !important; }
+  #nbPrintAll .nb-page-cover .nb-page-footer { color: rgba(255,255,255,0.7) !important; text-shadow: 0 1px 3px rgba(0,0,0,0.8) !important; }
+  #nbPrintAll .nb-page-cover .nb-page-label { color: rgba(255,255,255,0.5) !important; text-shadow: 0 1px 3px rgba(0,0,0,0.8) !important; }
+  #nbPrintAll .nb-page-cover .nb-block { display: none !important; }
+  #nbPrintAll .nb-page-cover .nb-block:has(.block-img-loaded) { display: block !important; margin: 0 !important; padding: 0 !important; border: none !important; }
+  #nbPrintAll .nb-page-cover .block-img-center { display: block !important; }
+  #nbPrintAll .nb-page-cover .block-img-loaded { max-height: none !important; width: 816px !important; height: 1056px !important; border-radius: 0 !important; }
+  #nbPrintAll .nb-page-cover .block-img-loaded img { width: 816px !important; height: 1056px !important; max-height: none !important; max-width: none !important; object-fit: cover !important; border-radius: 0 !important; }
 
   /* Force gradient backgrounds to print (browsers suppress them by default) */
   #nbPrintAll .block-header-box,
@@ -3486,6 +3652,14 @@ renderEntryList();
 updateCounts();
 if (NB.entries.length) selectEntry(NB.entries[0].id);
 initColorBar();
+// Re-paginate all entries on load so limit/layout changes take effect on existing data
+if (NB.entries.length) setTimeout(() => {
+  const sel = NB.selEntry;
+  const rootIds = [...new Set(NB.entries.map(e => e.rootEntryId || e.id))];
+  rootIds.forEach(id => { try { nbRepaginateEntry(id, { skipRemote: true }); } catch(e) {} });
+  const target = NB.entries.find(e => e.id === sel) || NB.entries[0];
+  if (target) { NB.selEntry = target.id; renderEditor(target); }
+}, 1200);
 // Click outside modal closes it
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
 // Enter key submits the new cycle modal
@@ -3511,6 +3685,146 @@ document.addEventListener('scroll', () => {
 document.addEventListener('mouseup', () => {
   document.querySelectorAll('.block-img-loaded').forEach(el => saveImgSize(el));
 });
+
+// ─── PUBLISH TO WEB ──────────────────────────────────────────────────────────
+function publishToWeb() {
+  if (!NB.entries.length) { alert('No entries to publish.'); return; }
+  const teamCode = nbNormTeam(NB.config.team);
+  if (!teamCode) { alert('Set a team number in Notebook Settings first.'); return; }
+  document.getElementById('publishResult').style.display = 'none';
+  document.getElementById('publishBody').style.display = '';
+  document.getElementById('publishStatus').textContent = '';
+  document.getElementById('publishBtn').disabled = false;
+  document.getElementById('publishBtn').textContent = 'Publish';
+  document.getElementById('publishBtn').style.display = '';
+  document.getElementById('publishModal').classList.add('open');
+}
+async function doPublish() {
+  const teamCode = nbNormTeam(NB.config.team);
+  const btn = document.getElementById('publishBtn');
+  const status = document.getElementById('publishStatus');
+  btn.disabled = true;
+  btn.textContent = 'Publishing…';
+  status.textContent = 'Sending notebook to server…';
+  status.style.color = 'var(--t2)';
+
+  // Resolve server base: prefer explicit config, fall back to current origin on web
+  const serverBase = NB.config.publishUrl || (location.protocol !== 'file:' ? location.origin : '');
+  if (!serverBase) {
+    status.textContent = 'Enter your Railway server URL in Notebook Settings → Publish Server URL first.';
+    status.style.color = '#ff7b77';
+    btn.disabled = false;
+    btn.textContent = 'Publish';
+    return;
+  }
+
+  try {
+    const snapshot = notebookSnapshot();
+    const res = await fetch(serverBase + '/nb/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teamCode, data: snapshot }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error || res.statusText);
+    const viewUrl = `${serverBase}/notebook.html?view=1&team=${encodeURIComponent(teamCode)}`;
+    document.getElementById('publishBody').style.display = 'none';
+    document.getElementById('publishResult').style.display = '';
+    document.getElementById('publishUrlInput').value = viewUrl;
+    document.getElementById('publishBtn').style.display = 'none';
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#ff7b77';
+    btn.disabled = false;
+    btn.textContent = 'Try Again';
+  }
+}
+function copyPublishUrl() {
+  const inp = document.getElementById('publishUrlInput');
+  inp.select();
+  navigator.clipboard?.writeText(inp.value).catch(() => document.execCommand('copy'));
+  const btn = inp.nextElementSibling;
+  btn.textContent = 'Copied!';
+  setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+}
+
+// ─── VIEW MODE (?view=1&team=TEAMCODE) ────────────────────────────────────────
+(async function initViewMode() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('view')) return;
+
+  document.body.classList.add('nb-view-mode');
+
+  const teamCode = params.get('team')?.toUpperCase() || '';
+  const pagesEl  = document.getElementById('nbViewerPages');
+  const vhTeam   = document.getElementById('vhTeam');
+  const vhInfo   = document.getElementById('vhInfo');
+
+  if (!teamCode) {
+    pagesEl.innerHTML = '<div id="nbViewerLoading" style="color:#ff7b77;">No team specified. Add ?team=YOURTEAM to the URL.</div>';
+    return;
+  }
+
+  vhTeam.textContent = teamCode;
+  vhInfo.textContent  = 'Loading…';
+
+  let data;
+  try {
+    const res = await fetch(location.origin + '/nb/data/' + encodeURIComponent(teamCode));
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error || res.statusText);
+    }
+    data = await res.json();
+  } catch (e) {
+    pagesEl.innerHTML = `<div id="nbViewerLoading" style="color:#ff7b77;">Could not load notebook for <strong>${teamCode}</strong>: ${e.message}</div>`;
+    vhInfo.textContent = '';
+    return;
+  }
+
+  nbApplyData(data, { skipRemote: true });
+
+  clearTimeout(NB.pagination.timer);
+  const roots = [...new Set(NB.entries.map(e => e.rootEntryId || e.id))];
+  roots.forEach(rootId => { try { nbRepaginateEntry(rootId, { skipRemote: true }); } catch(_) {} });
+
+  const totalPages = NB.entries.length;
+  vhTeam.textContent = [data.config?.team, data.config?.name].filter(Boolean).join(' — ') || teamCode;
+  const updatedStr = data.updatedAt ? ' · Updated ' + new Date(data.updatedAt).toLocaleDateString() : '';
+  vhInfo.textContent = `${totalPages} page${totalPages !== 1 ? 's' : ''} · ${data.config?.season || ''}${updatedStr}`;
+
+  pagesEl.innerHTML = '';
+  NB.entries.forEach((entry, globalIdx) => {
+    const typeLabel  = nbGetEntryTypeLabel(entry.type);
+    const z          = entry._zoom;
+    const blocksHtml = renderBlocks(entry);
+
+    const pageDiv = document.createElement('div');
+    pageDiv.className = 'nb-page' + (globalIdx === 0 ? ' nb-page-cover' : '');
+    pageDiv.innerHTML = `<div class="nb-print-content">${(z ? `<div style="zoom:${z}">` : '') + blocksHtml + (z ? '</div>' : '')}</div>`
+      + `<div class="nb-page-footer">Page ${globalIdx + 1} of ${totalPages}</div>`
+      + `<div class="nb-page-label">${typeLabel}</div>`;
+
+    pageDiv.querySelectorAll('textarea').forEach(ta => {
+      const div = document.createElement('div');
+      div.textContent = ta.value;
+      div.className = ta.className;
+      div.setAttribute('style', ta.getAttribute('style') || '');
+      div.style.cssText += ';white-space:pre-wrap;word-break:break-word;height:auto;overflow:visible;resize:none;';
+      ta.parentNode.replaceChild(div, ta);
+    });
+
+    pagesEl.appendChild(pageDiv);
+  });
+
+  const IMG_MAX_H = 400;
+  pagesEl.querySelectorAll('.block-img-loaded img').forEach(img => {
+    if (img.closest('.nb-page-cover')) return;
+    img.style.maxHeight = IMG_MAX_H + 'px';
+    img.style.width = 'auto';
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+  });
+})();
 
 // ─── AUTH BAR ────────────────────────────────────────────────────────────────
 const G_ICON = `<svg width="13" height="13" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
@@ -3572,5 +3886,18 @@ window.addEventListener('message', e => {
   }
 });
 </script>
+
+<!-- VIEW MODE WRAPPER (hidden unless ?view=1) -->
+<div id="nbViewerWrap">
+  <div id="nbViewerHeader">
+    <span class="vh-badge">LIVE VIEW</span>
+    <span class="vh-team" id="vhTeam"></span>
+    <span class="vh-info" id="vhInfo"></span>
+    <span class="vh-nexus">NEXUS</span>
+  </div>
+  <div id="nbViewerPages">
+    <div id="nbViewerLoading">Loading notebook…</div>
+  </div>
+</div>
 </body>
 </html>

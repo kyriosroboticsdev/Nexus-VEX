@@ -7,20 +7,28 @@
 const fs   = require('fs');
 const path = require('path');
 
-const FILES = [
+// Files sourced from the project root
+const ROOT_FILES = [
   'index.html',
   'app.js',
   'simulator.js',
   'config.js',
   'web-stub.js',
   'code.js',
-  'notebook.html',
+  'three.min.js',
 ];
 
-function copyTo(outDir) {
+// Files that live in nexus-web/ (read before we touch the output dir)
+const NEXUS_WEB_FILES = [
+  'notebook.html',
+  'docx.js',
+];
+
+function buildPublicDir(outDir) {
   if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true });
   fs.mkdirSync(outDir, { recursive: true });
-  FILES.forEach(f => {
+
+  ROOT_FILES.forEach(f => {
     const src = path.join(__dirname, f);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, path.join(outDir, f));
@@ -29,13 +37,38 @@ function copyTo(outDir) {
       console.warn('  skipped (not found):', f);
     }
   });
+
+  NEXUS_WEB_FILES.forEach(f => {
+    const src = path.join(__dirname, 'nexus-web', f);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, path.join(outDir, f));
+      console.log('  copied nexus-web/' + f, '→', path.relative(__dirname, outDir));
+    } else {
+      console.warn('  skipped (not found): nexus-web/' + f);
+    }
+  });
 }
 
-// 1. Local fallback folder
-copyTo(path.join(__dirname, 'nexus-web'));
+function syncNexusWebDir() {
+  // nexus-web/ is the source for notebook.html / docx.js; only sync root files into it.
+  const outDir = path.join(__dirname, 'nexus-web');
+  fs.mkdirSync(outDir, { recursive: true });
+  ROOT_FILES.forEach(f => {
+    const src = path.join(__dirname, f);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, path.join(outDir, f));
+      console.log('  updated', f, '→ nexus-web');
+    } else {
+      console.warn('  skipped (not found):', f);
+    }
+  });
+}
 
-// 2. Compile-server public folder (deployed to Railway)
-copyTo(path.join(__dirname, 'compile-server', 'public'));
+// 1. Update root files inside nexus-web/ (notebook.html/docx.js already live there)
+syncNexusWebDir();
+
+// 2. Build compile-server/public/ from both root files and nexus-web/ files
+buildPublicDir(path.join(__dirname, 'compile-server', 'public'));
 
 console.log('\nDone.');
 console.log('  nexus-web/             — open index.html locally if needed');
